@@ -1,0 +1,15 @@
+
+__pycache__/
+bin/
+lib/
+
+
+pyvenv.cfg
+
+.prettierrc
+
+get-docker.sh
+
+share/man/man1/isympy.1
+
+lib64

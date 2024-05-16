@@ -1,0 +1,19 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing: border-box;
+}
+
+body{
+    background-color: lightgray;
+}
+
+canvas{
+    background-color: white;
+}
+
+img{
+    max-width: 700px;
+}
+
+
