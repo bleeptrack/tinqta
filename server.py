@@ -63,15 +63,21 @@ def raw_data(data):
 
 @socketio.on('new dataset')
 def new_dataset(data):
+    #print("socket received:")
     #print(data)
 
     if len(data['list']) == 0:
         print("ERROR: no drawing data transmitted!")
     else:
+        gh.init_raw(data)
         gh.save_line_training_data(data['name'])
 
         lineTrainer = LineTrainer(data['name'])
-        lineTrainer.trainModel()
+        lineTrainer.trainModel(send_progress)
+        
+def send_progress(text):
+    print("sending progress", text)
+    emit('progress', text)
 
 @socketio.on('generate')
 def generate(data):
@@ -205,9 +211,9 @@ def train(data):
 
 ###### ROUTES
 
-#@app.route("/")
-#def hello_world():
-#    return render_template('index.html')
+@app.route("/")
+def start():
+    return render_template('index.html')
 
 @app.route("/train")
 def website_train():

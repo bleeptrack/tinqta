@@ -110,6 +110,7 @@ class GraphHandler:
 
     def save_line_training_data(self, name):
         data_list = []
+        print("raw data:", self.raw_data)
         for line in self.raw_data:
             x, edge_index = self.create_line_graph(line['points'])
             data = Data(x=x, edge_index=edge_index, scale=line['scale'], rotation=line['rotation'])

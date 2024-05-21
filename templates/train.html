@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -7,15 +5,11 @@
     <title>title</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.15/paper-full.min.js" integrity="sha512-ovjLI1ZcZe6bw+ImQ21r+sv8q/Vwob2kq7tFidK6E1LWfi0T4uobbmpfEU1//a9h9o5Kkt+MnMWf6rWlg0EiMw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
-    <script src="{{ url_for('static', filename='drawing.js') }}"></script>
   </head>
-  <body>
-    <h1>GraphDraw</h1>
-    <input type="text" id="trainname"></input><button id="train">train</button><button id="train-pattern">train Pattern</button><button id="compare">compare</button><button id="generate">generate</button><button id="generate-pattern">generate pattern</button><button id="extend-pattern">extend pattern</button><button id="flower">flower</button>
-    <canvas id="paperCanvas" style="width:90%; height:1000px;"></canvas>
-    <button id="save" onclick="save()">save</button><input id="load" type="file">
-    <button id="save" onclick="downloadSVG()">save SVG</button>
-    <button id="undo" onclick="undo()">undo</button>
-  </body>
+  
+    <body>
+        <pattern-trainer></pattern-trainer>
+        <script type="module" src="{{ url_for('static', filename='PatternTrainer.js') }}"></script>
+    </body>
+  
 </html>

@@ -1,19 +1,19 @@
-*{
-    margin:0;
-    padding:0;
-    box-sizing: border-box;
+:root {
+  --gap-size: 1vh;
+  --main-color: #3DD1E7;  
+  --action-color: firebrick;
+  --hover-darken: 50%;
 }
 
-body{
-    background-color: lightgray;
+
+html, body{
+	height: 100%;
+	padding: 0;
+	margin: 0;
 }
 
-canvas{
-    background-color: white;
-}
 
-img{
-    max-width: 700px;
-}
+
+
 
 

@@ -287,7 +287,7 @@ class LineTrainer():
         return loss, (mse_weight * lossMSE), (kl_weight * beta_norm * kld_loss), kl_weight, mse_weight
 
 
-    def trainModel(self):
+    def trainModel(self, progress_callback=None):
         self.model.train()
         criterionMSE = torch.nn.MSELoss()
         criterionKLD = torch.nn.KLDivLoss(reduction='batchmean')
@@ -338,6 +338,8 @@ class LineTrainer():
                 loss_list = loss_list[1:]
 
             print("Epoch:", epoch, "Loss:", running_loss, l1, l2, m, w)
+            if progress_callback:
+                progress_callback(l1.item())
 
             if math.isnan(running_loss):
                 die()
