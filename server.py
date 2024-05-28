@@ -8,11 +8,15 @@ import os.path as osp
 from config import config
 import random
 import numpy as np
+from pathlib import Path
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app)
 
+#create folders if they dont exist yet
+Path("./baseData").mkdir(exist_ok=True)
+Path("./lineModels").mkdir(exist_ok=True)
 
 gh = GraphHandler()
 
