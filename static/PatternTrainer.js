@@ -29,31 +29,69 @@ export class PatternTrainer extends HTMLElement {
 			<link rel="stylesheet" href="/static/style.css">
 			<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
 			<style>
-				
+				#container{
+					display: flex;
+					flex-direction: column;
+					height: 100%;
+					box-sizing: border-box;
+					padding: 5%;
+					gap: 1vh;
+				}
+				#canvas-container{
+					width: 100%;
+					flex: 1;
+					border: 2px solid black;
+					position: relative;
+				}
+				input{
+					max-width: 40vw;
+					width: 50em;
+					height: 2em;
+					padding: 0.5em;
+					align-self: center;
+				}
+				#undo{
+					position: absolute;
+					top: 2vh;
+					right: 2vh;
+					width: 2em;
+				}
+				#train{
+					align-self: center;
+				}
+				[contenteditable=true]:empty:before {
+					content: attr(placeholder);
+					pointer-events: none;
+					display: block; /* For Firefox */
+					color: grey;
+				}
 				
 			</style>
 			
 			<div id="container">
-				<input type="test" placeholder="Scribble Name" id="name"></input>
+				<h1>Train your Scribble Model</h1>
+				<div id="name" class="scribble input" placeholder="Enter your model name" contenteditable=true></div>
+				<div id="canvas-container">
+					<button id="undo" class="material-symbols-outlined scribble">undo</button>
+				</div>
 				
-				<button id="undo">undo</button>
-				<button id="train">train</button>
+				<button id="train" class="scribble">train</button>
 			</div>
 		`;
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
 
-		this.shadow.getElementById("name").after(this.canvas)
+		this.shadow.getElementById("canvas-container").appendChild(this.canvas)
 		this.shadow.getElementById("undo").addEventListener("click", () => {
 			this.canvas.undo()
 		})
 		this.shadow.getElementById("train").addEventListener("click", () => {
 			console.log(this.canvas.linelist)
-			console.log("name:", this.shadow.getElementById("name").value)
+			console.log("name:", this.shadow.getElementById("name").innerHTML)
 			
 			this.socket.emit("new dataset", {
-				name: this.shadow.getElementById("name").value,
+				name: this.shadow.getElementById("name").innerHTML,
 				list: this.canvas.linelist,
 			})
 			

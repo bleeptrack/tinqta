@@ -14,12 +14,13 @@ export class PaperCanvas extends HTMLElement {
 			<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
 			<style>
 				
-				canvas{
-					background-color: lightblue;
-				}
+				canvas[resize] {
+					width: 100%;
+					height: 100%;
+				}	
 			</style>
 			
-			<canvas id="paperCanvas"></canvas>
+			<canvas id="paperCanvas" resize="true"></canvas>
 				
 		`;
 
@@ -46,6 +47,8 @@ export class PaperCanvas extends HTMLElement {
 		tool.onMouseDown = function (event) {
 			path = new Path()
 			path.strokeColor = "black"
+			path.strokeWidth = 3
+			path.strokeCap = 'round'
 			path.add(event.point)
 		}
 
