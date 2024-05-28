@@ -1,6 +1,7 @@
 # tinqta
 
 # 🧑‍💻 Installation
+
 ## docker (recommended)
 Simply install the container via 
 `docker pull bleeptrack/tinqta:main`
@@ -25,3 +26,4 @@ More info in unsage coming soon!
 
 # ❤️‍ Acknoledgements
 ![]
+
