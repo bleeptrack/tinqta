@@ -26,6 +26,7 @@ export class PatternTrainer extends HTMLElement {
 
 		// creating the inner HTML of the editable list element
 		container.innerHTML = `
+			<link rel="stylesheet" href="/static/style.css">
 			<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
 			<style>
 				
