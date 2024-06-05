@@ -18,6 +18,10 @@ export class PatternTrainer extends HTMLElement {
 		
 		this.socket.on("progress", (text) => {
 			console.log("progress received", text)
+			if(text.lines){
+				this.canvas.trainingEpoch(text)
+				
+			}
 		})
 		
 		

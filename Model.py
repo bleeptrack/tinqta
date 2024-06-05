@@ -338,8 +338,6 @@ class LineTrainer():
                 loss_list = loss_list[1:]
 
             print("Epoch:", epoch, "Loss:", running_loss, l1, l2, m, w)
-            if progress_callback:
-                progress_callback(l1.item())
 
             if math.isnan(running_loss):
                 die()
@@ -355,7 +353,17 @@ class LineTrainer():
             if epoch % 100 == 0:
                 torch.save(self.model.state_dict(), self.model_path)
                 print("saving...")
-
+                
+                
+            if progress_callback:
+                
+                if epoch % 15 == 0:
+                    print("extracting vectors for animation")
+                    vectors, originpoints = self.extractOriginLineVectors()
+                    
+                    progress_callback(self, vectors)
+                #else:
+                #    progress_callback(self, l1.item())
 
         torch.save(self.model.state_dict(), self.model_path)
 

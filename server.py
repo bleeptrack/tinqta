@@ -9,6 +9,7 @@ from config import config
 import random
 import numpy as np
 from pathlib import Path
+import torch
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -79,9 +80,19 @@ def new_dataset(data):
         lineTrainer = LineTrainer(data['name'])
         lineTrainer.trainModel(send_progress)
         
-def send_progress(text):
-    print("sending progress", text)
-    emit('progress', text)
+def send_progress(trainer, text):
+   
+    if isinstance(text, list):
+        pointlist = []
+        for z in text:
+            print(z)
+            tensor = trainer.decode_latent_vector(z)
+            pointlist.append(tensor2Points(tensor))
+        #print(pointlist)
+        emit('progress', {'lines': pointlist} )
+    else:
+        print("sending progress", text)
+        emit('progress', {'percent':text} )
 
 @socketio.on('generate')
 def generate(data):
