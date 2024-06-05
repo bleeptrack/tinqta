@@ -362,8 +362,8 @@ class LineTrainer():
                     vectors, originpoints = self.extractOriginLineVectors()
                     
                     progress_callback(self, vectors)
-                #else:
-                #    progress_callback(self, l1.item())
+                elif epoch % 10 == 0: 
+                    progress_callback(self, str(m)+"-"+str(w))
 
         torch.save(self.model.state_dict(), self.model_path)
 

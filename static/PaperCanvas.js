@@ -238,13 +238,9 @@ export class PaperCanvas extends HTMLElement {
 			
 			if(this.trainingLines[this.trainingLines.length -1]){
 				let lastItem = this.trainingLines[this.trainingLines.length -1][idx]
-				//let animPath = lastItem.clone()
-				//animPath.insertAbove(this.originalLines[idx])
-				//animPath.strokeColor = "blue"
 				
 				this.animLines[idx].tween(1000).onUpdate = (event) => {
 					this.animLines[idx].interpolate(lastItem, paperline, event.factor)
-					console.log("tweeeeeen")
 				}
 				
 			}
