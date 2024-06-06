@@ -1,6 +1,7 @@
 'use strict';
 import { SceneButton } from './SceneButton.js';
 import { PaperCanvas } from './PaperCanvas.js';
+import { ProgressBar } from './ProgressBar.js';
 import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js";
 
 export class PatternTrainer extends HTMLElement {
@@ -46,6 +47,7 @@ export class PatternTrainer extends HTMLElement {
 					flex: 1;
 					border: 2px solid black;
 					position: relative;
+					min-height: 0;
 				}
 				input{
 					max-width: 40vw;
@@ -100,6 +102,8 @@ export class PatternTrainer extends HTMLElement {
 			})
 			
 		})
+		
+		this.shadow.getElementById("train").after( new ProgressBar() )
 
 	}
 
