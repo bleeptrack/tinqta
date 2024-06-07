@@ -24,7 +24,7 @@ export class ProgressBar extends HTMLElement {
 				}
 				#progress:after{
 					background-color: rgba(1,1,1,0.5);
-					width: calc(1% - 1px) !important;
+					
 				}
 			</style>
 			
@@ -37,18 +37,27 @@ export class ProgressBar extends HTMLElement {
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
-		this.setPercentage(50)
+		
+		
+		
 
 	}
 	
 
 
 	connectedCallback() {
+		this.setPercentage(1)
 		
 	}
 	
 	setPercentage(percentage){
-		this.shadow.getElementById("progress").style.width = `width: calc(${percentage}% - 1px) !important;`
+		for(let rule of this.shadow.styleSheets[this.shadow.styleSheets.length-1].cssRules){
+			console.log(rule.selectorText)
+			if(rule.selectorText  == "#progress::after" ){
+				console.log(rule);
+				rule.style.width = `calc(${percentage}% - 1px)`
+			}
+		}
 	}
 
 }
