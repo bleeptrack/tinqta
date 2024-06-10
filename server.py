@@ -234,6 +234,10 @@ def start():
 def website_train():
     return render_template('train.html')
 
+@app.route("/webcam")
+def website_webcam():
+    return render_template('webcam.html')
+
 #@app.route("/photo")
 #def website_photo():
 #    return render_template('photo.html')
