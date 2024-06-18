@@ -264,6 +264,9 @@ class LineTrainer():
         ##self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         ##self.scheduler = ReduceLROnPlateau(self.optimizer, patience=60, cooldown=20)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0005)
+        
+        self.epoch_training_offset = 200
+        self.kl_annealing = 0.001
        
         #lr war mal 0.1. 0.001 war jetzt besser
 
@@ -273,8 +276,8 @@ class LineTrainer():
         lossMSE = criterionMSE(out, target)
 
         beta_norm = 0.01 #(1000 * config['latent_size']) / (config["nrPoints"]*2)
-        kl_annealing = 0.001 #0.001
-        kl_weight = max(0, min( (epoch -200) * kl_annealing, 1 ) )
+        kl_annealing = self.kl_annealing #0.001
+        kl_weight = max(0, min( (epoch - self.epoch_training_offset) * kl_annealing, 1 ) )
 
 
         mse_annealing = kl_annealing
@@ -293,6 +296,8 @@ class LineTrainer():
         criterionKLD = torch.nn.KLDivLoss(reduction='batchmean')
 
         loss_list = []
+        min_loss = 1000
+        min_loss_epoch = 1
 
         for epoch in range(self.epochs):
 
@@ -349,10 +354,24 @@ class LineTrainer():
             print("total", diff)
             if running_loss < 0.1:
                 break
-
-            if epoch % 100 == 0:
-                torch.save(self.model.state_dict(), self.model_path)
-                print("saving...")
+            
+            if epoch > (1/self.kl_annealing + self.epoch_training_offset):
+                if running_loss < min_loss:
+                    min_loss = running_loss
+                    min_loss_epoch = epoch
+                    torch.save(self.model.state_dict(), self.model_path)
+                    print("saving...")
+                    
+                if epoch - 100 > min_loss_epoch:
+                    print("FINISHED TRAINING as loss:", min_loss)
+                    if progress_callback:
+                        progress_callback(self, 100, "finished")
+                    break
+            
+                
+            #if epoch % 100 == 0:
+            #    torch.save(self.model.state_dict(), self.model_path)
+            #    print("saving...")
                 
                 
             if progress_callback:
@@ -362,8 +381,17 @@ class LineTrainer():
                     vectors, originpoints = self.extractOriginLineVectors()
                     
                     progress_callback(self, vectors)
-                elif epoch % 10 == 0: 
-                    progress_callback(self, str(m)+"-"+str(w))
+                elif epoch % 5 == 0: 
+                    label = "training"
+                   
+                    min_epochs = 1/self.kl_annealing + self.epoch_training_offset
+                    percent = min_epochs / 90
+                        
+                    if epoch <= self.epoch_training_offset:
+                        label = "warming up"
+                    if epoch > (1/self.kl_annealing + self.epoch_training_offset):
+                        label = "finalizing"
+                    progress_callback(self, round(min(epoch, 1/self.kl_annealing + self.epoch_training_offset)/percent), label)
 
         torch.save(self.model.state_dict(), self.model_path)
 
