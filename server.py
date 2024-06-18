@@ -80,7 +80,7 @@ def new_dataset(data):
         lineTrainer = LineTrainer(data['name'])
         lineTrainer.trainModel(send_progress)
         
-def send_progress(trainer, text):
+def send_progress(trainer, text, label=None):
    
     if isinstance(text, list):
         pointlist = []
@@ -92,7 +92,13 @@ def send_progress(trainer, text):
         emit('progress', {'lines': pointlist} )
     else:
         print("sending progress", text)
-        emit('progress', {'percent':text} )
+        emit('progress', {'percent':text, 'label':label} )
+        
+def getLatentspaceLine(data):
+    lineTrainer = LineTrainer(data['name'])
+    x, edge_index = gh.create_line_graph(data['points'])
+    z = lineTrainer.encodeLineVector(x, edge_index)
+    line = lineTrainer.decode_latent_vector(z)
 
 @socketio.on('generate')
 def generate(data):
@@ -138,9 +144,6 @@ def new_pattern(data):
     #todo training hier ist broken ||||| ist das so?
     pt = PatternTrainer(data['name'])
     pt.trainModel()
-
-
-
 
 
 @socketio.on('generate pattern')

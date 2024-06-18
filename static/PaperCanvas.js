@@ -227,17 +227,21 @@ export class PaperCanvas extends HTMLElement {
 			iteration.push(paperline)
 			if(this.animLines.length <= idx){
 				let animLine = new Path()
-				animLine.strokeColor = "blue"
+				animLine.strokeColor = "#3DD1E7"
 				animLine.strokeWidth = 8
-				animLine.opacity = 0.7
+				animLine.opacity = 0.85
 				animLine.strokeCap = 'round'
 				animLine.strokeJoin = 'round'
+				
 				this.animLines.push( animLine )
 				console.log("push", animLine)
+				
 			}
 			
 			if(this.trainingLines[this.trainingLines.length -1]){
 				let lastItem = this.trainingLines[this.trainingLines.length -1][idx]
+				lastItem.smooth({ type: 'continuous' })
+				paperline.smooth({ type: 'continuous' })
 				
 				this.animLines[idx].tween(1000).onUpdate = (event) => {
 					this.animLines[idx].interpolate(lastItem, paperline, event.factor)
