@@ -12,8 +12,8 @@ export class VectorizerCanvas extends HTMLElement {
 		this.canvas = new PaperCanvas()
 		
 		this.edgeDetails = 5
-		this.edgemin = 20
-		this.edgemax = 50
+		this.edgemin = 20 //20
+		this.edgemax = 50  //50
 		
 		this.edgeLines = []
 		this.samplePoints = []
@@ -68,12 +68,12 @@ export class VectorizerCanvas extends HTMLElement {
 		this.models = [
 
                     "jojo",
-                    "sun",
+                    ////////"sun",
                     "boxes",
                     "gigswirl",
                     "trianglestripe",
                     "boxgroup"
-                    //"pigtail",
+                    ////"pigtail",
 
                 ]
 		let mlName = lodash.sample(this.models)
@@ -112,6 +112,7 @@ export class VectorizerCanvas extends HTMLElement {
 		console.log("lengths", this.mlStrokes.length )
 		const bodypix = ml5.bodyPix( () => {
 			
+			//canvasTMP? kommentar unter vectorize raster rein?
 			bodypix.segment(this.video, (error, result) => {
 				
 				if (error) {
