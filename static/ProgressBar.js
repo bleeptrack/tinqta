@@ -17,10 +17,13 @@ export class ProgressBar extends HTMLElement {
 				
 				#bar{
 					width: 100%;
+					display: flex;
+					flex-direction: column;
+					align-items: center;
 				}
 				#progress{
-					height: 10vh;
-					
+					max-width: none;
+					margin: 1vh;
 				}
 				#progress:after{
 					background-color: rgba(1,1,1,0.5);
@@ -29,8 +32,8 @@ export class ProgressBar extends HTMLElement {
 			</style>
 			
 			<div id="bar">
-				<div id="title"></div>
 				<div id="progress" class="scribble"></div>
+				<span id="label"></span>
 			</div>
 				
 		`;
@@ -50,7 +53,8 @@ export class ProgressBar extends HTMLElement {
 		
 	}
 	
-	setPercentage(percentage){
+	setPercentage(percentage, label){
+		this.shadow.getElementById("label").innerHTML = label
 		for(let rule of this.shadow.styleSheets[this.shadow.styleSheets.length-1].cssRules){
 			console.log(rule.selectorText)
 			if(rule.selectorText  == "#progress::after" ){

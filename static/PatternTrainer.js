@@ -22,6 +22,8 @@ export class PatternTrainer extends HTMLElement {
 			if(text.lines){
 				this.canvas.trainingEpoch(text)
 				
+			}else if(text.percent){
+				this.progressbar.setPercentage(Number(text.percent), text.label)
 			}
 		})
 		
@@ -101,10 +103,11 @@ export class PatternTrainer extends HTMLElement {
 				list: this.canvas.linelist,
 			})
 			
+			this.progressbar = new ProgressBar()
+			this.shadow.getElementById("train").replaceWith(this.progressbar)
+			
 		})
 		
-		this.shadow.getElementById("train").after( new ProgressBar() )
-
 	}
 
 
