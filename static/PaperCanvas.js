@@ -6,6 +6,7 @@ export class PaperCanvas extends HTMLElement {
 		super();
 	
 		this.shadow = this.attachShadow({ mode: 'open' });
+		this.saveAnimation = true
 
 		const container = document.createElement('template');
 
@@ -215,6 +216,8 @@ export class PaperCanvas extends HTMLElement {
 			this.animLines = []
 		}
 		let iteration = []
+		
+		
 		for(let [idx,line] of Object.entries(data.lines)){
 			let paperline = this.drawLine(line, "grey")
 			paperline.strokeWidth = 5
@@ -239,19 +242,99 @@ export class PaperCanvas extends HTMLElement {
 			}
 			
 			if(this.trainingLines[this.trainingLines.length -1]){
+				
 				let lastItem = this.trainingLines[this.trainingLines.length -1][idx]
 				lastItem.smooth({ type: 'continuous' })
 				paperline.smooth({ type: 'continuous' })
-				
+					
+					
 				this.animLines[idx].tween(1000).onUpdate = (event) => {
 					this.animLines[idx].interpolate(lastItem, paperline, event.factor)
-				}
+				}	
 				
 			}
 			
 			
 		}
 		this.trainingLines.push(iteration)
+	}
+	
+	saveAnimationEpoch(data){
+		paper.view.autoUpdate = false
+		
+		if(!this.trainingLines){
+			this.trainingLines = []
+			this.animLines = []
+		}
+		let iteration = []
+		let animationFrames = []
+		let canvas = this.shadow.getElementById('paperCanvas')
+		
+		for(let [idx,line] of Object.entries(data.lines)){
+			let paperline = this.drawLine(line, "grey")
+			paperline.strokeWidth = 5
+			paperline.opacity = 0.5
+			paperline.position = this.originalLines[idx].firstSegment.point
+			paperline.scale(this.linelist[idx].scale, paperline.firstSegment.point)
+			paperline.rotate(this.linelist[idx].rotation*360, paperline.firstSegment.point)
+			paperline.remove()
+			
+			iteration.push(paperline)
+			if(this.animLines.length <= idx){
+				let animLine = new Path()
+				animLine.strokeColor = "#3DD1E7"
+				animLine.strokeWidth = 8
+				animLine.opacity = 0.85
+				animLine.strokeCap = 'round'
+				animLine.strokeJoin = 'round'
+				
+				this.animLines.push( animLine )
+				console.log("push", animLine)
+				
+			}
+			
+			//this.trainingLines.push(iteration)
+		}
+			
+		
+		for(let i = 0; i<= 1; i+=0.1){
+			for(let x = 0; x<this.animLines.length; x++){
+				if(this.trainingLines[this.trainingLines.length -1]){
+					
+					let lastItem = this.trainingLines[this.trainingLines.length -1][x]
+					let paperline = iteration[x]
+					lastItem.smooth({ type: 'continuous' })
+					paperline.smooth({ type: 'continuous' })
+						
+						
+					this.animLines[x].interpolate(lastItem, paperline, i)
+					
+					console.log(i)
+					paper.view.update()
+				}
+			}
+			
+			//await this.sleep()
+			this.downloadCanvas()
+		}
+		this.trainingLines.push(iteration)
+		
+	}
+	
+	
+	downloadCanvas(){
+		paper.view.pause()
+		paper.view.requestUpdate()
+		paper.view.update()
+		var link = document.createElement('a');
+		link.download = 'tinqta.png';
+		link.href = this.shadow.getElementById('paperCanvas').toDataURL()
+		link.click();
+	}
+	
+	
+	sleep() { 
+		return new Promise(r => setTimeout(r));
 	}
 
 }

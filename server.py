@@ -100,6 +100,7 @@ def getLatentspaceLine(data):
     z = lineTrainer.encodeLineVector(x, edge_index)
     line = lineTrainer.decode_latent_vector(z)
 
+
 @socketio.on('generate')
 def generate(data):
     print(data)

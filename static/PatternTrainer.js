@@ -11,16 +11,20 @@ export class PatternTrainer extends HTMLElement {
 		this.socket = io();
 		this.shadow = this.attachShadow({ mode: 'open' });
 		this.canvas = new PaperCanvas()
+		this.epochLines = []
+		
 		
 		this.socket.on("init", (config) => {
 			console.log("config received", config)
 			this.canvas.setConfig(config)
+			
 		})
 		
 		this.socket.on("progress", (text) => {
 			console.log("progress received", text)
-			if(text.lines){
+			if(text.lines){				
 				this.canvas.trainingEpoch(text)
+				this.epochLines.push(text)
 				
 			}else if(text.percent){
 				this.progressbar.setPercentage(Number(text.percent), text.label)
@@ -94,6 +98,7 @@ export class PatternTrainer extends HTMLElement {
 		this.shadow.getElementById("undo").addEventListener("click", () => {
 			this.canvas.undo()
 		})
+		
 		this.shadow.getElementById("train").addEventListener("click", () => {
 			console.log(this.canvas.linelist)
 			console.log("name:", this.shadow.getElementById("name").innerHTML)
@@ -112,8 +117,15 @@ export class PatternTrainer extends HTMLElement {
 
 
 	connectedCallback() {
+		window.downloadLines = this.saveLines.bind(this)
 		
-		
+	}
+	
+	saveLines(){
+		let link = document.createElement('a');
+		link.download = 'tinqta-training.json';
+		link.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.epochLines));
+		link.click();
 	}
 
 }
