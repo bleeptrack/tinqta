@@ -34,6 +34,7 @@ export class VectorizerCanvas extends HTMLElement {
 			this.mlScales = data.scales
 			this.mlRotations = data.rotations
 			console.log("mlStrokes length", this.mlStrokes.length)
+			this.dispatchEvent(new CustomEvent("ready"));
 		});
 		
 		
@@ -46,20 +47,35 @@ export class VectorizerCanvas extends HTMLElement {
 			<link rel="stylesheet" href="/static/style.css">
 			<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
 			<style>
+				
+				
+				#container{
+					position: relative;
+				}
+				#webcam{
+					position: absolute;
+					top: 0px;
+					left: 0px;
+					
+				}
+				#edge-canvas{
+					position: absolute;
+					top: 0px;
+					left: 0px;
+					opacity: 0.5;
+				}
 				#canvas-container{
 					width: 640px;
 					height: 480px;
 				}
-				
 			</style>
 			
 			<div id="container">
-				vectorizer
-				<button id="start">START</button>
 				<div id="canvas-container" width="640" height="480"></div>
-				<canvas id="edge-canvas"></canvas>
 				<video id="webcam" width="640" height="480"></video>
+				<canvas id="edge-canvas"></canvas>
 			</div>
+			
 		`;
 
 	
@@ -81,9 +97,7 @@ export class VectorizerCanvas extends HTMLElement {
 		
 		this.shadow.getElementById("canvas-container").appendChild(this.canvas)
 		
-		this.shadow.getElementById("start").addEventListener("click", () => {
-			this.startProcess()
-		})
+		
 		
 
 	}
@@ -94,7 +108,7 @@ export class VectorizerCanvas extends HTMLElement {
 
 		this.raster.setImageData(this.ctx.getImageData(0, 0, this.vidw, this.vidh), [0,0])
 		this.raster.position = view.center;
-		this.shadow.getElementById("edge-canvas").remove()
+		//this.shadow.getElementById("webcam").remove()
 		this.ctx = undefined
 
 		let canvasTMP = document.createElement('canvas');
@@ -108,7 +122,11 @@ export class VectorizerCanvas extends HTMLElement {
 		console.log(res)
 
 
+		
+		
 		//remove background
+		
+		
 		console.log("lengths", this.mlStrokes.length )
 		const bodypix = ml5.bodyPix( () => {
 			
@@ -121,6 +139,31 @@ export class VectorizerCanvas extends HTMLElement {
 				}
 				// log the result
 				console.log("MASK", result.backgroundMask);
+			
+				const myWorker = new Worker("static/worker-vectorize.js");
+				createImageBitmap( this.raster.getImageData() ).then( (bmp) => {
+					myWorker.postMessage({
+						mlStrokes: this.mlStrokes,
+						mlScales: this.mlScales,
+						mlRotations: this.mlRotations,
+						baseSize: this.config["stroke_normalizing_size"],
+						raster: bmp,
+						vidw: this.vidw,
+						vidh: this.vidh,
+						res: res,
+						result: result
+					});
+				})
+				
+				myWorker.addEventListener("message", (event) => {
+					this.dispatchEvent(new CustomEvent("progress", {detail: event.data}));
+				});
+				
+		
+			/*
+			
+				
+				
 			
 				this.vectorizeRaster(this.raster)
 				//raster.setImageData(context.getImageData(0, 0, vidw, vidh), [0,0])
@@ -136,6 +179,8 @@ export class VectorizerCanvas extends HTMLElement {
 
 				this.compressColors(this.raster, res, result.backgroundMask)
 
+				this.shadow.getElementById("webcam").remove()
+				this.shadow.getElementById("edge-canvas").remove()
 				
 				this.samplePoints = lodash.shuffle(this.samplePoints)
 
@@ -143,43 +188,12 @@ export class VectorizerCanvas extends HTMLElement {
 				while(this.samplePoints.length > 0 && this.mlStrokes.length > 0){
 					this.drawML()
 				}
+				*/
 			});
 			
 		});
-
-		/*
-		function gotResults(error, result) {
-			if (error) {
-				console.log(error);
-				return;
-			}
-			// log the result
-			console.log("MASK", result.backgroundMask);
 		
-			vectorizeRaster(raster)
-			//raster.setImageData(context.getImageData(0, 0, vidw, vidh), [0,0])
-
-			res = res.map( (elem, idx) => (new Color(res[idx][0]/255, res[idx][1]/255, res[idx][2]/255) ) )
-			res = res.sort(function(a,b){
-				if( a.brightness < b.brightness){
-					return -1
-				}else{
-					return 1
-				}
-			})
-
-			compressColors(raster, res, result.backgroundMask)
-
-			
-			samplePoints = _.shuffle(samplePoints)
-
-			while(samplePoints.length > 0 && mlStrokes.length > 0){
-				drawML()
-			}
-			
 		
-		}
-		*/
 		
 	}
 	
@@ -226,45 +240,9 @@ export class VectorizerCanvas extends HTMLElement {
 		}
 	}
 	
-	vectorizeRaster(raster){
-		let viewRadius = 3
-		let k = 10
-		let maxDist = 3.7
-		let whiteColor = new Color('white')
-		let points = []
-		for(let i = 0; i<this.vidw; i++){
-			for(let j = 0; j<this.vidh; j++){
-				let noiseX = 0//Math.round(Math.random())
 
-				let noiseY = 0//i%2//Math.round(Math.random())
-				if(raster.getPixel(i+noiseX,j+noiseY).equals(whiteColor)){
-					let c = new Path.Circle({
-						fillColor: 'red',
-						center: new Point(i, j),
-						radius: 1
-					})
-					let p = new Point(i+noiseX,j+noiseY)
-					p.circle = c
-					c.remove()
-					p.ID = points.length
-					p.connections = []
-					points.push(p)
-				}
-			}
-		}
-
-		this.generateImage(points, maxDist)
-	}
 	
-	generateImage(points, maxDist){
-		let used = []
-		let remaining = points.length-used.length
-		while(remaining > 100){
-			used = this.drawStroke(points, maxDist, used)
-			remaining = points.length-used.length
-			console.log("remaining: ", remaining)
-		}
-	}
+	
 
 
 	connectedCallback() {
@@ -294,134 +272,12 @@ export class VectorizerCanvas extends HTMLElement {
 			}
 	}
 	
-	drawStroke(points, maxDist, used){
-		let ids = points.map(p => p.ID)
-		let sampleID = lodash.sample(lodash.without(ids, ...used)) //_.sample(points)
-		let testPoint = points[sampleID]
 
-
-			//used = [testPoint.ID]
-			used.push(testPoint.ID)
-			let path = new Path({
-				strokeColor : Color.random(),
-				strokeWidth : 1
-			})
-			path.add(testPoint)
-
-
-			for(let i = 0; i<500; i++){
-				let sorted = lodash.sortBy(points, [function(p) { return path.lastSegment.point.getDistance(p) }]);
-				sorted = sorted.map(p => p.ID)
-				sorted = lodash.without(sorted, ...used)
-				if(path.lastSegment.point.getDistance(points[sorted[0]]) > maxDist ){
-					console.log("break at ", i)
-					break
-				}else{
-					path.add(points[sorted[0]])
-					used.push(sorted[0])
-				}
-			}
-			path.reverse()
-			for(let i = 0; i<500; i++){
-				let sorted = lodash.sortBy(points, [function(p) { return path.lastSegment.point.getDistance(p) }]);
-				sorted = sorted.map(p => p.ID)
-				sorted = lodash.without(sorted, ...used)
-				if(path.lastSegment.point.getDistance(points[sorted[0]]) > maxDist ){
-					console.log("break at ", i)
-					break
-				}else{
-					path.add(points[sorted[0]])
-					used.push(sorted[0])
-				}
-			}
-
-			path.simplify(10)
-			//path.smooth()
-			this.edgeLines.push(path)
-
-			return used
-	}
 	
-	compressColors(raster, palette, backgroundMask){
-		let mask = new ImageData(backgroundMask,this.vidw,this.vidh);
-		raster.setImageData(mask, [0,0])
-		console.log(raster.getPixel(0,0))
-		
-		for(let i = 0; i<raster.size.width; i++){
-			for(let j = 0; j<raster.size.height; j++){
-				let col = raster.getPixel(i,j)
-				if(col.alpha == 0){
-					raster.setPixel(i,j, new Color('white'))
-				}else{
-					let closeColIdx = this.findClosestColor(col, palette)
-					raster.setPixel(i,j, palette[closeColIdx])
-					if(closeColIdx < 1){
-						this.samplePoints.push([i,j])
-					}
-				}
-				
-			}
-		}
-		
-	}
-	
-	findClosestColor(col, palette){
-		let dist = 1000
-		let idx = 0
-		for(let [i, paletteColor] of palette.entries()){
-			let d = this.colorDistance(col, paletteColor)
-			if(d < dist){
-				dist = d
-				idx = i
-			}
-		}
-		return idx
-	}
-	
-	colorDistance(c1, c2){
-		let c = c2.subtract(c1)
-		return Math.abs( Math.sqrt( Math.pow(c.red, 2) + Math.pow(c.blue, 2) + Math.pow(c.green, 2) ) )
-	}
-	
-	drawML(){
-		let points = this.mlStrokes.pop()
-		let scale = this.mlScales.pop()
-		let rot = this.mlRotations.pop()
-		let c = new Path( {segments: points} )
-		c.smooth()
-		c.strokeColor = 'black'
-		
-		let largeDir = Math.max(c.bounds.width, c.bounds.height)
-		let baseSize = this.config["stroke_normalizing_size"]
-		c.scale(baseSize/largeDir, c.firstSegment.point)
-		
-		
-		//c.scale(scale)
-		console.log("scale", baseSize/largeDir)
-		//c.scale(0.4)
-		c.scale(0.2)
-		//if(mlName != "trianglestripe"){
-		//    c.scale(0.85)
-		//}else{
-		//    c.scale(1.1)
-		//}
-		c.rotate(rot)
-		c.position = this.samplePoints.pop()
-		while( (this.doesIntersect(c, this.patternLines) || this.doesIntersect(c, this.edgeLines) ) && this.samplePoints.length > 0 && this.mlStrokes.length > 0 ){
-			c.position = this.samplePoints.pop()
-		}
-		this.patternLines.push(c)
-		console.log("remaining sample points:", this.samplePoints.length, this.mlStrokes.length)
-	}
 
-	doesIntersect(item, arr){
-		for(let i of arr){
-			if(item.intersects(i)){
-				return true
-			}
-		}
-		return false
-	}
+
+
+
 
 	getSVG(){
 		this.raster.remove()
