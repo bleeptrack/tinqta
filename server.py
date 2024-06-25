@@ -4,7 +4,8 @@ from DrawData import GraphHandler
 from Model import LineTrainer, PatternTrainer
 import json
 import os
-import os.path as osp
+import os.path as osp, isfile, join
+from os import listdir
 from config import config
 import random
 import numpy as np
@@ -20,6 +21,7 @@ Path("./baseData").mkdir(exist_ok=True)
 Path("./lineModels").mkdir(exist_ok=True)
 
 gh = GraphHandler()
+
 
 
 #path = osp.join(osp.dirname(osp.realpath(__file__)), 'data', 'dataset-test')
@@ -100,6 +102,9 @@ def getLatentspaceLine(data):
     z = lineTrainer.encodeLineVector(x, edge_index)
     line = lineTrainer.decode_latent_vector(z)
 
+def getModels():
+    onlyfiles = [f for f in listdir("./lineModels") if os.path.isfile(join(mypath, f))]
+    print(onlyfiles)
 
 @socketio.on('generate')
 def generate(data):
@@ -240,6 +245,7 @@ def website_train():
 
 @app.route("/webcam")
 def website_webcam():
+    getModels()
     return render_template('webcam.html')
 
 #@app.route("/photo")

@@ -56,18 +56,16 @@ export class WebcamGenerator extends HTMLElement {
 			<div id="container">
 				<div id="left">
 					<vectorizer-canvas id="vec"></vectorizer-canvas>
-					
-					<button id="download">SAVE</button>
 				</div>
 				<div id="right">
+					<input type="range" min="1" max="100" value="20" class="slider" id="edge-min">
+					<input type="range" min="1" max="100" value="30" class="slider" id="edge-max">
 				</div>
 			</div>
 		`;
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
-		
-		this.shadow.getElementById("download").addEventListener("click", this.downloadSVG.bind(this))
 		
 		this.vectorizer = this.shadow.getElementById("vec")
 		this.vectorizer.addEventListener("ready", () => {
@@ -84,7 +82,23 @@ export class WebcamGenerator extends HTMLElement {
 			})
 		})
 		this.vectorizer.addEventListener("progress", (data) => {
-			this.progressbar.setPercentage(data.detail.percentage, data.detail.label)
+			if(data.detail.percentage == 100){
+				let saveBtn = document.createElement("button")
+				saveBtn.addEventListener("click", this.downloadSVG.bind(this))
+				saveBtn.classList.add("scribble")
+				saveBtn.innerHTML = "SAVE"
+				this.progressbar.replaceWith(saveBtn)
+			}else{
+				this.progressbar.setPercentage(data.detail.percentage, data.detail.label)
+			}
+		})
+		
+		this.shadow.getElementById("edge-min").addEventListener("change", (event) => {
+			this.vectorizer.edgemin = event.target.value
+		})
+		
+		this.shadow.getElementById("edge-max").addEventListener("change", (event) => {
+			this.vectorizer.edgemax = event.target.value
 		})
 		
 		
