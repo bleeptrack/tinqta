@@ -84,9 +84,9 @@ export class WebcamGenerator extends HTMLElement {
 			})
 		})
 		this.vectorizer.addEventListener("progress", (data) => {
-			console.log("progress", data.detail.percentage, data.detail.label)
 			this.progressbar.setPercentage(data.detail.percentage, data.detail.label)
 		})
+		
 		
 		
 	}

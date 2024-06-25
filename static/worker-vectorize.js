@@ -1,7 +1,6 @@
 onmessage = function(e) {
 	let data = e.data
 	
-	console.log('Worker: Message received from main script', e);
 	self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.15/paper-full.min.js')
 	self.importScripts('https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js')
 	
@@ -14,46 +13,38 @@ onmessage = function(e) {
 	let imageData = context.getImageData(0, 0, data.vidw, data.vidh);
 	
 	
-	console.log(data.raster)
 	this.edgeLines = []
 	this.samplePoints = []
 	this.patternLines = []
 	
 	
-	//raster.putImageData(data.raster)
+	findPoints(imageData)
+	//vectorizeRaster(data.raster)
+	//raster.setImageData(context.getImageData(0, 0, vidw, vidh), [0,0])
 
+	let res = data.res.map( (elem, idx) => (new Color(data.res[idx][0]/255, data.res[idx][1]/255, data.res[idx][2]/255) ) )
+	res = res.sort(function(a,b){
+		if( a.brightness < b.brightness){
+			return -1
+		}else{
+			return 1
+		}
+	})
 
-	postMessage("here goes my result");
+	compressColors(data.video, res, data.result.backgroundMask)
+
+	//this.shadow.getElementById("webcam").remove()
+	//this.shadow.getElementById("edge-canvas").remove()
 	
-	
-	
-			findPoints(imageData)
-			//vectorizeRaster(data.raster)
-			//raster.setImageData(context.getImageData(0, 0, vidw, vidh), [0,0])
+	this.samplePoints = _.shuffle(this.samplePoints)
 
-			let res = data.res.map( (elem, idx) => (new Color(data.res[idx][0]/255, data.res[idx][1]/255, data.res[idx][2]/255) ) )
-			res = res.sort(function(a,b){
-				if( a.brightness < b.brightness){
-					return -1
-				}else{
-					return 1
-				}
-			})
-
-			compressColors(imageData, res, data.result.backgroundMask)
-
-			//this.shadow.getElementById("webcam").remove()
-			//this.shadow.getElementById("edge-canvas").remove()
-			
-			this.samplePoints = _.shuffle(this.samplePoints)
-
-			console.log("lengths", this.samplePoints.length, data.mlStrokes.length )
-			let allStrokes = data.mlStrokes.length
-			while(this.samplePoints.length > 0 && data.mlStrokes.length > 0){
-				drawML()
-				
-				postMessage({label: "creating shadow", percentage: (allStrokes-data.mlStrokes.length) * 50 / allStrokes + 50});
-			}
+	let allStrokes = data.mlStrokes.length
+	while(this.samplePoints.length > 0 && data.mlStrokes.length > 0){
+		drawML()
+		
+		postMessage({label: "creating shadow", percentage: (allStrokes-data.mlStrokes.length) * 50 / allStrokes + 50});
+	}
+	postMessage({svg: paper.project.exportJSON()});
 		
 	
 	function findPoints(imageData){
@@ -91,7 +82,7 @@ onmessage = function(e) {
 	
 	function getPixelAsColor(x,y, imageData){
 		let index = (y*imageData.width + x) * 4;
-		return new Color(imageData.data[index]/255, imageData.data[index + 1]/255, imageData.data[index + 2]/255)
+		return new Color(imageData.data[index]/255.0, imageData.data[index + 1]/255.0, imageData.data[index + 2]/255.0)
 	}
 	
 	function isTransparent(x,y, uint8data, width){
@@ -131,7 +122,6 @@ onmessage = function(e) {
 				sorted = sorted.map(p => p.ID)
 				sorted = _.without(sorted, ...used)
 				if(path.lastSegment.point.getDistance(points[sorted[0]]) > maxDist ){
-					console.log("break at ", i)
 					break
 				}else{
 					path.add(points[sorted[0]])
@@ -144,7 +134,6 @@ onmessage = function(e) {
 				sorted = sorted.map(p => p.ID)
 				sorted = _.without(sorted, ...used)
 				if(path.lastSegment.point.getDistance(points[sorted[0]]) > maxDist ){
-					console.log("break at ", i)
 					break
 				}else{
 					path.add(points[sorted[0]])
@@ -164,11 +153,13 @@ onmessage = function(e) {
 		let idx = 0
 		for(let [i, paletteColor] of palette.entries()){
 			let d = colorDistance(col, paletteColor)
+			
 			if(d < dist){
 				dist = d
 				idx = i
 			}
 		}
+		
 		return idx
 	}
 	
@@ -184,7 +175,7 @@ onmessage = function(e) {
 					setPixel(x, y, imageData, 255, 255, 255)
 				}else{
 					let closeColIdx = findClosestColor(getPixelAsColor(x,y,imageData), palette)
-					//console.log(palette[closeColIdx].red)
+					
 					setPixel(x, y, imageData, Math.round(palette[closeColIdx].red*255), Math.round(palette[closeColIdx].green*255), Math.round(palette[closeColIdx].blue*255))
 					if(closeColIdx < 1){
 						this.samplePoints.push([x,y])
@@ -205,24 +196,15 @@ onmessage = function(e) {
 		let largeDir = Math.max(c.bounds.width, c.bounds.height)
 		let baseSize = data.baseSize
 		c.scale(baseSize/largeDir, c.firstSegment.point)
-		
-		
-		//c.scale(scale)
-		console.log("scale", baseSize/largeDir)
-		//c.scale(0.4)
+
 		c.scale(0.2)
-		//if(mlName != "trianglestripe"){
-		//    c.scale(0.85)
-		//}else{
-		//    c.scale(1.1)
-		//}
+
 		c.rotate(rot)
 		c.position = this.samplePoints.pop()
 		while( (doesIntersect(c, this.patternLines) || doesIntersect(c, this.edgeLines) ) && this.samplePoints.length > 0 && data.mlStrokes.length > 0 ){
 			c.position = this.samplePoints.pop()
 		}
 		this.patternLines.push(c)
-		console.log("remaining sample points:", this.samplePoints.length, data.mlStrokes.length)
 	}
 	
 	function doesIntersect(item, arr){

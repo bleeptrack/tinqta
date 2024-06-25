@@ -138,7 +138,7 @@ export class VectorizerCanvas extends HTMLElement {
 					return;
 				}
 				// log the result
-				console.log("MASK", result.backgroundMask);
+				console.log("MASK", result);
 			
 				const myWorker = new Worker("static/worker-vectorize.js");
 				createImageBitmap( this.raster.getImageData() ).then( (bmp) => {
@@ -151,12 +151,24 @@ export class VectorizerCanvas extends HTMLElement {
 						vidw: this.vidw,
 						vidh: this.vidh,
 						res: res,
-						result: result
+						result: result,
+						video: context.getImageData(0,0, this.vidw, this.vidh)
+						
 					});
 				})
 				
 				myWorker.addEventListener("message", (event) => {
-					this.dispatchEvent(new CustomEvent("progress", {detail: event.data}));
+					if(event.data.percentage){
+						this.dispatchEvent(new CustomEvent("progress", {detail: event.data}));
+					}else if(event.data.svg){
+						this.shadow.getElementById("webcam").style.visibility = "hidden"
+						this.shadow.getElementById("edge-canvas").style.visibility = "hidden"
+						paper.project.clear()
+						paper.project.importJSON(event.data.svg)
+					}else{
+						console.log("unknown worker message")
+					}
+					
 				});
 				
 		
