@@ -14,7 +14,16 @@ export class WebcamGenerator extends HTMLElement {
 		this.socket.on("init", (config) => {
 			console.log("config received", config)
 		})
-		
+		this.socket.on("models", (models) => {
+			console.log("models received", models)
+			let select = this.shadow.getElementById("model")
+			for(let modelname of models){
+				let option = document.createElement("option")
+				option.value = modelname
+				option.innerHTML = modelname
+				select.appendChild(option)
+			}
+		})
 		
 		
 		
@@ -60,6 +69,9 @@ export class WebcamGenerator extends HTMLElement {
 				<div id="right">
 					<input type="range" min="1" max="100" value="20" class="slider" id="edge-min">
 					<input type="range" min="1" max="100" value="30" class="slider" id="edge-max">
+					<select name="model" id="model">
+						<option value="random">random</option>
+					</select>
 				</div>
 			</div>
 		`;
@@ -99,6 +111,11 @@ export class WebcamGenerator extends HTMLElement {
 		
 		this.shadow.getElementById("edge-max").addEventListener("change", (event) => {
 			this.vectorizer.edgemax = event.target.value
+		})
+		
+		this.shadow.getElementById("model").addEventListener("change", (event) => {
+			console.log(event.target.value)
+			this.vectorizer.setModelName(event.target.value)
 		})
 		
 		

@@ -4,7 +4,7 @@ from DrawData import GraphHandler
 from Model import LineTrainer, PatternTrainer
 import json
 import os
-import os.path as osp, isfile, join
+import os.path as osp
 from os import listdir
 from config import config
 import random
@@ -56,6 +56,9 @@ def prediction2obj(pred, lineTrainer, ref_id=None):
 def connect():
     print("User connected")
     emit('init', config)
+    mlist = getModels()
+    print(mlist)
+    emit('models', mlist)
 
 #@socketio.on('new line')
 #def new_line(points):
@@ -103,15 +106,19 @@ def getLatentspaceLine(data):
     line = lineTrainer.decode_latent_vector(z)
 
 def getModels():
-    onlyfiles = [f for f in listdir("./lineModels") if os.path.isfile(join(mypath, f))]
-    print(onlyfiles)
+    onlyfiles = [f for f in listdir("./lineModels") if osp.isfile(osp.join("./lineModels", f))]
+    return onlyfiles
 
 @socketio.on('generate')
 def generate(data):
     print(data)
     print("RAW", gh.raw_data)
-
-    trainer = LineTrainer(data['name'])
+    
+    if data['name'] == "random":
+        print("choosing RANDOM model")
+        trainer = LineTrainer(random.choice(getModels()))
+    else:
+        trainer = LineTrainer(data['name'])
 
     tensors, scales, rotations = trainer.generate(data['nr'], 0.5)
     pointlist = []
@@ -245,7 +252,6 @@ def website_train():
 
 @app.route("/webcam")
 def website_webcam():
-    getModels()
     return render_template('webcam.html')
 
 #@app.route("/photo")

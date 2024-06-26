@@ -19,12 +19,15 @@ export class VectorizerCanvas extends HTMLElement {
 		this.samplePoints = []
 		this.patternLines = []
 		
+		this.modelName = "random"
+		
 		
 		
 		this.socket.on("init", (config) => {
 			console.log("config received", config)
 			this.config = config
 			this.canvas.setConfig(config)
+			this.dispatchEvent(new CustomEvent("ready"));
 			
 		})
 		
@@ -34,7 +37,7 @@ export class VectorizerCanvas extends HTMLElement {
 			this.mlScales = data.scales
 			this.mlRotations = data.rotations
 			console.log("mlStrokes length", this.mlStrokes.length)
-			this.dispatchEvent(new CustomEvent("ready"));
+			this.startImageProcess()
 		});
 		
 		
@@ -81,6 +84,7 @@ export class VectorizerCanvas extends HTMLElement {
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
 		
+		/*
 		this.models = [
 
                     "jojo",
@@ -93,7 +97,7 @@ export class VectorizerCanvas extends HTMLElement {
 
                 ]
 		let mlName = lodash.sample(this.models)
-		this.socket.emit('generate', {nr: 200, name:mlName});
+		*/
 		
 		this.shadow.getElementById("canvas-container").appendChild(this.canvas)
 		
@@ -102,7 +106,14 @@ export class VectorizerCanvas extends HTMLElement {
 
 	}
 	
+	setModelName(name){
+		this.modelName = name
+		
+	}
+	
 	startProcess(){
+		console.log( {nr: 200, name:this.modelName} )
+		
 		paper.view.onFrame = undefined
 		console.log("start")
 
@@ -111,27 +122,28 @@ export class VectorizerCanvas extends HTMLElement {
 		//this.shadow.getElementById("webcam").remove()
 		this.ctx = undefined
 
-		let canvasTMP = document.createElement('canvas');
-		var context = canvasTMP.getContext('2d');
+		this.canvasTMP = document.createElement('canvas');
+		var context = this.canvasTMP.getContext('2d');
 		context.canvas.width  = this.vidw;
 		context.canvas.height = this.vidh;
 		context.drawImage(this.video, 0, 0, this.vidw, this.vidh);
 
 		const colorThief = new ColorThief();
-		let res = colorThief.getPalette(canvasTMP, 10);
-		console.log(res)
-
-
+		this.res = colorThief.getPalette(this.canvasTMP, 10);
+		console.log(this.res)
 		
+		this.socket.emit('generate', {nr: 200, name:this.modelName})
 		
-		//remove background
+	}
+	
+	startImageProcess(){
 		
-		
+	
 		console.log("lengths", this.mlStrokes.length )
 		const bodypix = ml5.bodyPix( () => {
 			
 			//canvasTMP? kommentar unter vectorize raster rein?
-			bodypix.segment(this.video, (error, result) => {
+			bodypix.segment(this.canvasTMP, (error, result) => {
 				
 				if (error) {
 					console.log(error);
@@ -150,9 +162,9 @@ export class VectorizerCanvas extends HTMLElement {
 						raster: bmp,
 						vidw: this.vidw,
 						vidh: this.vidh,
-						res: res,
+						res: this.res,
 						result: result,
-						video: context.getImageData(0,0, this.vidw, this.vidh)
+						video: this.canvasTMP.getContext('2d').getImageData(0,0, this.vidw, this.vidh)
 						
 					});
 				})
@@ -283,6 +295,7 @@ export class VectorizerCanvas extends HTMLElement {
 				console.log("Something went wrong!", err);
 				});
 			}
+			
 	}
 	
 
