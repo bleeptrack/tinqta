@@ -128,6 +128,28 @@ def generate(data):
 
     emit('result', {'list': pointlist, 'scales':scales, 'rotations':rotations})
     
+@socketio.on('convertToLatentspace')
+def convertToLatentspace(data):
+    print(data)
+    
+    
+    if data['name'] == "random":
+        print("choosing RANDOM model")
+        trainer = LineTrainer(random.choice(getModels()))
+    else:
+        trainer = LineTrainer(data['name'])
+
+    x, edge_index = gh.create_line_graph(data['points'])
+    z = trainer.encodeLineVector(x, edge_index)
+    latentLine = trainer.decode_latent_vector(z)
+    print(latentLine)
+    #pointlist = []
+
+    #for tensor in tensors:
+    #    pointlist.append(tensor2Points(tensor))
+
+    emit('latentLine', {'list': tensor2Points(latentLine), 'scales':data['scale'], 'rotations':data['rotation']})
+    
 @socketio.on('compare')
 def compare(data):
     trainer = LineTrainer(data['name'])
