@@ -107,10 +107,12 @@ export class WebcamGenerator extends HTMLElement {
 		
 		this.shadow.getElementById("edge-min").addEventListener("change", (event) => {
 			this.vectorizer.edgemin = event.target.value
+			sessionStorage.setItem("tinqta:edge-min", event.target.value)
 		})
 		
 		this.shadow.getElementById("edge-max").addEventListener("change", (event) => {
 			this.vectorizer.edgemax = event.target.value
+			sessionStorage.setItem("tinqta:edge-max", event.target.value)
 		})
 		
 		this.shadow.getElementById("model").addEventListener("change", (event) => {
@@ -118,7 +120,10 @@ export class WebcamGenerator extends HTMLElement {
 			this.vectorizer.setModelName(event.target.value)
 		})
 		
-		
+		this.vectorizer.edgemin = sessionStorage.getItem("tinqta:edge-min") || 20
+		this.vectorizer.edgemax = sessionStorage.getItem("tinqta:edge-max") || 50
+		this.shadow.getElementById("edge-min").value = this.vectorizer.edgemin
+		this.shadow.getElementById("edge-max").value = this.vectorizer.edgemax
 		
 	}
 

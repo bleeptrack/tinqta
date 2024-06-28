@@ -87,14 +87,13 @@ export class VectorizerCanvas extends HTMLElement {
 					opacity: 0.5;
 				}
 				#canvas-container{
-					width: 640px;
-					height: 480px;
+					
 				}
 			</style>
 			
 			<div id="container">
-				<div id="canvas-container" width="640" height="480"></div>
-				<video id="webcam" width="640" height="480"></video>
+				<div id="canvas-container"></div>
+				<video id="webcam"></video>
 				<canvas id="edge-canvas"></canvas>
 			</div>
 			
@@ -118,7 +117,7 @@ export class VectorizerCanvas extends HTMLElement {
 		let mlName = lodash.sample(this.models)
 		*/
 		
-		this.shadow.getElementById("canvas-container").appendChild(this.canvas)
+		
 		
 		
 		
@@ -385,23 +384,43 @@ export class VectorizerCanvas extends HTMLElement {
 
 	connectedCallback() {
 		
-		paper.view.onFrame = this.tick.bind(this)
-		this.ctx = this.shadow.getElementById("edge-canvas").getContext('2d')
-		this.video = this.shadow.getElementById('webcam');
-		this.vidw = this.video.width
-		this.vidh = this.video.height
-		this.edgeCanvas = this.shadow.getElementById('edge-canvas');
-		this.edgeCanvas.width = this.vidw
-		this.edgeCanvas.height = this.vidh
-		this.raster = new Raster([this.vidw,this.vidh]);
-		console.log(navigator.mediaDevices.getUserMedia)
+		
 		
 		 if (navigator.mediaDevices.getUserMedia) {
-			navigator.mediaDevices.getUserMedia({ video: true })
+			navigator.mediaDevices.getUserMedia({ video: true, video: { width: 1280, height: 720 } })
 				.then((stream) => {
-				console.log("stream")
-				this.video.srcObject = stream;
-				this.video.play();
+					console.log("stream")
+					this.video = this.shadow.getElementById('webcam');
+					this.video.srcObject = stream;
+					this.video.play();
+					
+					this.video.addEventListener("playing", () => {
+						this.vidw = this.video.videoWidth
+						this.vidh = this.video.videoHeight
+						
+						
+						this.ctx = this.shadow.getElementById("edge-canvas").getContext('2d')
+						
+						this.video.width = this.vidw
+						this.video.height= this.vidh
+						let canvcont = this.shadow.getElementById('canvas-container');
+						canvcont.style.width = `${this.vidw}px`
+						canvcont.style.height= `${this.vidh}px`
+						
+						this.edgeCanvas = this.shadow.getElementById('edge-canvas');
+						this.edgeCanvas.width = this.vidw
+						this.edgeCanvas.height = this.vidh
+						
+						
+						this.shadow.getElementById("canvas-container").appendChild(this.canvas)
+						paper.view.onFrame = this.tick.bind(this)
+						this.raster = new Raster([this.vidw,this.vidh]);
+						
+						console.log(navigator.mediaDevices.getUserMedia)
+					})
+					
+					
+					
 
 				})
 				.catch(function (err) {
