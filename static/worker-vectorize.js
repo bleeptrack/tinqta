@@ -31,7 +31,8 @@ onmessage = function(e) {
 		}
 	})
 
-	compressColors(data.video, res, data.result.backgroundMask)
+	console.log("SEGMENTATION", data.result)
+	compressColors(data.video, res, data.result.partMask)
 
 	//this.shadow.getElementById("webcam").remove()
 	//this.shadow.getElementById("edge-canvas").remove()
@@ -90,7 +91,8 @@ onmessage = function(e) {
 	function isTransparent(x,y, uint8data, width){
 		let index = (y*width + x) * 4;
 		let alpha = uint8data[index + 3];
-		return alpha == 0
+		//console.log(uint8data[index + 0], uint8data[index + 1], uint8data[index + 2],uint8data[index + 3] )
+		return alpha == 0 || (uint8data[index + 0] == 255 && uint8data[index + 1] == 255 && uint8data[index + 2] == 255)
 	}
 	
 	function generateImage(points, maxDist){
@@ -173,6 +175,7 @@ onmessage = function(e) {
 	function compressColors(imageData, palette, backgroundMask){
 		for(let x = 0; x<imageData.width; x++){
 			for(let y = 0; y<imageData.height; y++){
+				
 				if(isTransparent(x, y, backgroundMask, imageData.width)){
 					setPixel(x, y, imageData, 255, 255, 255)
 				}else{
@@ -199,9 +202,12 @@ onmessage = function(e) {
 		let baseSize = data.baseSize
 		c.scale(baseSize/largeDir, c.firstSegment.point)
 
-		c.scale(0.2)
+		//c.scale(0.2)
+		//c.scale(scale, c.firstSegment.point)
+		c.scale(0.15)
 
 		c.rotate(rot)
+		
 		c.position = this.samplePoints.pop()
 		while( (doesIntersect(c, this.patternLines) || doesIntersect(c, this.edgeLines) ) && this.samplePoints.length > 0 && data.mlStrokes.length > 0 ){
 			c.position = this.samplePoints.pop()
