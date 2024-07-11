@@ -296,7 +296,7 @@ export class VectorizerCanvas extends HTMLElement {
 						this.shadow.getElementById("edge-canvas").style.visibility = "hidden"
 						paper.project.clear()
 						paper.project.importJSON(event.data.svg)
-						//this.createMatchingLines()
+						this.createMatchingLines()
 						this.dispatchEvent(new CustomEvent("progress", {detail: {percentage: 100}}))
 					}else{
 						console.log("unknown worker message")

@@ -141,8 +141,12 @@ def convertToLatentspace(data):
 
     x, edge_index = gh.create_line_graph(data['points'])
     z = trainer.encodeLineVector(x, edge_index)
-    latentLine = trainer.decode_latent_vector(z)
-    print(latentLine)
+    zMatch = trainer.getClosestMatch(z)
+    
+    
+    latentLine = trainer.decode_latent_vector(zMatch)
+   
+    
     #pointlist = []
 
     #for tensor in tensors:

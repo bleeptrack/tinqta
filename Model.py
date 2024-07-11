@@ -16,6 +16,7 @@ from config import config
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 from torch_geometric.utils import subgraph
+import numpy as np
 
 
 class GCNEncoder(torch.nn.Module):
@@ -506,6 +507,16 @@ class LineTrainer():
 
         #z = z.to(current_device)
         return z
+    
+    def getClosestMatch(self, z):
+        latentvectors, _ = self.extractOriginLineVectors()
+        dist = float('inf')
+        latentvectors.insert(0, z)
+        latentTensor = torch.stack(latentvectors, dim=0)
+        dists = torch.cdist(latentTensor, latentTensor, p=2)
+        idx = torch.argmin(dists[0][1:]) + 1 #+1 to account for inserted z at beginning
+        closest = latentvectors[idx]
+        return closest
 
     def decode_latent_vector(self, z):
         self.model.eval()
