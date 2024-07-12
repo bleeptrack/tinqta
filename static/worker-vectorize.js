@@ -39,14 +39,14 @@ onmessage = function(e) {
 	
 	this.samplePoints = _.shuffle(this.samplePoints)
 
-	
+	/*
 	let allStrokes = data.mlStrokes.length
 	while(this.samplePoints.length > 0 && data.mlStrokes.length > 0){
 		drawML()
 		
 		postMessage({label: "creating shadow", percentage: (allStrokes-data.mlStrokes.length) * 50 / allStrokes + 50});
 	}
-	
+	*/
 	postMessage({svg: paper.project.exportJSON()});
 		
 	

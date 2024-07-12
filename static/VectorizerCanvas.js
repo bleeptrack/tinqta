@@ -56,6 +56,9 @@ export class VectorizerCanvas extends HTMLElement {
 			line.position = view.center
 			console.log(line.position)
 			
+			
+			
+			originalLines[0].interpolate(originalLines[0], line, 0.5)
 			//line.scale(100)
 			
 		})
