@@ -43,24 +43,7 @@ export class VectorizerCanvas extends HTMLElement {
 		this.socket.on("latentLine", (data) => {
 			console.log("latentLine received", data)
 			console.log(data)
-			let res = {
-				points: data.list,
-				scale: data.scales,
-				rotation: data.rotations
-			}
-			let segs = res.points.map( elem => new Point(elem.x, elem.y))
-			
-			let line = new Path({segments: segs})
-			line.strokeWidth = 5
-			line.strokeColor = "blue"
-			line.position = view.center
-			console.log(line.position)
-			
-			
-			
-			originalLines[0].interpolate(originalLines[0], line, 0.5)
-			//line.scale(100)
-			
+			this.canvas.interpolationData(data, 0.1)
 		})
 		
 
@@ -299,7 +282,14 @@ export class VectorizerCanvas extends HTMLElement {
 						this.shadow.getElementById("edge-canvas").style.visibility = "hidden"
 						paper.project.clear()
 						paper.project.importJSON(event.data.svg)
-						this.createMatchingLines()
+						this.canvas.createMatchingLines()
+						
+						this.socket.emit("convertToLatentspace", {
+							name: this.modelName,
+							list: this.canvas.linelist,
+						})
+						
+						
 						this.dispatchEvent(new CustomEvent("progress", {detail: {percentage: 100}}))
 					}else{
 						console.log("unknown worker message")
@@ -343,99 +333,6 @@ export class VectorizerCanvas extends HTMLElement {
 		
 		
 		
-	}
-	
-	createMatchingLines(){
-		paper.project.activeLayer.children[0].strokeWidth = 5
-		let pointLine = this.processLine(paper.project.activeLayer.children[0])
-		pointLine.name = this.modelName
-		console.log(pointLine)
-		this.socket.emit("convertToLatentspace", pointLine)
-	}
-	
-	processLine(path) {
-		let [segmentedPath, scale, angle] = this.createSegments(path)
-		path.scale(scale, path.firstSegment.point)
-		path.rotate(angle*360, path.firstSegment.point)
-		console.log(scale, angle)
-
-		let points = this.segments2points(segmentedPath)
-		return {
-			points: points,
-			scale: scale,
-			rotation: angle,
-		}
-	}
-	
-	createSegments(path) {
-		//scale up to normalized size
-		let largeDir = Math.max(path.bounds.width, path.bounds.height)
-		let baseSize = this.config["stroke_normalizing_size"]
-		path.scale(baseSize/largeDir, path.firstSegment.point)
-		let scale = largeDir/baseSize
-		
-		let currAngle = path.lastSegment.point.subtract(
-			path.firstSegment.point
-		).angle + 180
-		
-		let angle = currAngle/360
-		path.rotate(-currAngle, path.firstSegment.point)
-		
-		
-		let segmentedPath = new Path()
-
-		let dist = path.length / (this.config.nrPoints - 1)
-		for (let i = 0; i < this.config.nrPoints - 1; i++) {
-			let p = path.getPointAt(dist * i).round()
-			segmentedPath.addSegment(p)
-		}
-		segmentedPath.addSegment(path.lastSegment.point.round())
-
-		return [segmentedPath, scale, angle]
-	}
-	
-	drawLine(baseLine, color, smoothing) {
-		let points
-		if (Array.isArray(baseLine)) {
-			points = baseLine
-		} else {
-			points = baseLine.points
-		}
-
-		let path = new Path({segments: points})
-		path.strokeColor = color
-		path.pivot = path.firstSegment.point
-		
-		console.log("base", baseLine.position)
-
-		if (!Array.isArray(baseLine)) {
-			path.position = new Point(baseLine.position.x * this.config["max_dist"], baseLine.position.y * this.config["max_dist"] )
-			console.log("pos", path.position)
-			path.scale(baseLine.scale)
-			path.rotate(baseLine.rotation * 360)
-		} else {
-			console.error("no normapization info", baseLine)
-		}
-		
-		if(baseLine.reference_id){
-			console.log("moving", originalLines[baseLine.reference_id].firstSegment.point)
-			path.translate(originalLines[baseLine.reference_id].firstSegment.point)
-		}else{
-			path.translate(view.center)
-		}
-		
-		//this.processLine(path)
-
-		if (smoothing) {
-			path.simplify()
-		}
-		return path
-	}	
-	
-	segments2points(path) {
-		return path.segments.map((seg) => {
-			return {x: seg.point.x, y: seg.point.y}
-		})
 	}
 	
 	tick(){

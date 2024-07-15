@@ -138,21 +138,24 @@ def convertToLatentspace(data):
         trainer = LineTrainer(random.choice(getModels()))
     else:
         trainer = LineTrainer(data['name'])
+        
+    pointlist = []    
+    for line in data['list']:    
 
-    x, edge_index = gh.create_line_graph(data['points'])
-    z = trainer.encodeLineVector(x, edge_index)
-    zMatch = trainer.getClosestMatch(z)
+        x, edge_index = gh.create_line_graph(line['points'])
+        z = trainer.encodeLineVector(x, edge_index)
+        zMatch = trainer.getClosestMatch(z)
+        
+        
+        latentLine = trainer.decode_latent_vector(zMatch)
+        pointlist.append(tensor2Points(latentLine))
     
     
-    latentLine = trainer.decode_latent_vector(zMatch)
-   
-    
-    #pointlist = []
 
     #for tensor in tensors:
     #    pointlist.append(tensor2Points(tensor))
 
-    emit('latentLine', {'list': tensor2Points(latentLine), 'scales':data['scale'], 'rotations':data['rotation']})
+    emit('latentLine', {'list': pointlist})
     
 @socketio.on('compare')
 def compare(data):

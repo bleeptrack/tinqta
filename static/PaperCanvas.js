@@ -63,6 +63,62 @@ export class PaperCanvas extends HTMLElement {
 		}
 	}
 	
+	createMatchingLines(){
+		let ids = paper.project.activeLayer.children.length
+		let lines = paper.project.activeLayer.children
+		for(let i=0; i<ids; i++){
+			if(lines[i].length > 0){
+				this.processLine(lines[i])
+			}else{
+				//line.remove()
+			}
+			console.log(i)
+		}
+	}
+	
+	interpolationData(data, factor){
+		
+		for(let [idx, match] of data.list.entries()){
+			
+			console.log(idx, match)
+			let segs = match.points.map( elem => new Point(elem.x, elem.y))
+			
+			let line = new Path({segments: segs})
+			line.strokeWidth = 1
+			line.strokeColor = "blue"
+			line.position = view.center
+			console.log(line.position)
+			
+			
+			
+			let [segmentedData, rot, sca] = this.createSegments(paper.project.activeLayer.children[idx]) 
+			paper.project.activeLayer.children[0].strokeWidth = 2
+			paper.project.activeLayer.children[0].strokeColor = 'black'
+			
+			let test = new Path()
+			//
+			test = segmentedData.clone()
+		
+			test.strokeWidth = 5
+			test.strokeColor = "red"
+			test.pivot = test.firstSegment.point
+		
+		
+			test.position = line.firstSegment.point
+			
+			test.interpolate(test, line, factor)
+			
+			
+			test.position = segmentedData.firstSegment.point
+			
+			test.opacity = 0.5
+			line.remove()
+		
+		}
+		
+		
+	}
+	
 	setConfig(config){
 		this.config = config
 	}
@@ -71,7 +127,7 @@ export class PaperCanvas extends HTMLElement {
 		let [segmentedPath, scale, angle] = this.createSegments(path)
 		path.scale(scale, path.firstSegment.point)
 		path.rotate(angle*360, path.firstSegment.point)
-		console.log(scale, angle)
+		//console.log(scale, angle)
 
 		let points = this.segments2points(segmentedPath)
 		this.linelist.push({
@@ -80,39 +136,6 @@ export class PaperCanvas extends HTMLElement {
 			rotation: angle,
 		})
 		this.originalLines.push(path)
-	}
-	
-	createSegments(path) {
-		//scale up to normalized size
-		let largeDir = Math.max(path.bounds.width, path.bounds.height)
-		let baseSize = this.config["stroke_normalizing_size"]
-		path.scale(baseSize/largeDir, path.firstSegment.point)
-		let scale = largeDir/baseSize
-		
-		let currAngle = path.lastSegment.point.subtract(
-			path.firstSegment.point
-		).angle + 180
-		
-		let angle = currAngle/360
-		path.rotate(-currAngle, path.firstSegment.point)
-		
-		
-		let segmentedPath = new Path()
-
-		let dist = path.length / (this.config.nrPoints - 1)
-		for (let i = 0; i < this.config.nrPoints - 1; i++) {
-			let p = path.getPointAt(dist * i).round()
-			segmentedPath.addSegment(p)
-		}
-		segmentedPath.addSegment(path.lastSegment.point.round())
-
-		return [segmentedPath, scale, angle]
-	}
-	
-	segments2points(path) {
-		return path.segments.map((seg) => {
-			return {x: seg.point.x, y: seg.point.y}
-		})
 	}
 	
 	undo(){
@@ -159,24 +182,6 @@ export class PaperCanvas extends HTMLElement {
 		return path
 	}	
 	
-	processLine(path) {
-		let [segmentedPath, scale, angle] = this.createSegments(path)
-		path.scale(scale, path.firstSegment.point)
-		path.rotate(angle*360, path.firstSegment.point)
-		console.log(scale, angle)
-
-		let points = this.segments2points(segmentedPath)
-		//let group = drawLine(points, "red")
-		//pointlist.push(points)
-		this.linelist.push({
-			points: points,
-			scale: scale,
-			rotation: angle,
-		})
-		this.originalLines.push(path)
-
-	}
-	
 	createSegments(path) {
 		//scale up to normalized size
 		let largeDir = Math.max(path.bounds.width, path.bounds.height)
@@ -193,7 +198,7 @@ export class PaperCanvas extends HTMLElement {
 		
 		
 		let segmentedPath = new Path()
-
+		
 		let dist = path.length / (this.config.nrPoints - 1)
 		for (let i = 0; i < this.config.nrPoints - 1; i++) {
 			let p = path.getPointAt(dist * i).round()

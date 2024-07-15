@@ -147,7 +147,10 @@ onmessage = function(e) {
 
 			path.simplify(10)
 			//path.smooth()
-			this.edgeLines.push(path)
+			if(path.length > 0){
+				this.edgeLines.push(path)
+			}
+			
 
 			return used
 	}
