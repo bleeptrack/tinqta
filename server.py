@@ -155,7 +155,7 @@ def convertToLatentspace(data):
     #for tensor in tensors:
     #    pointlist.append(tensor2Points(tensor))
 
-    emit('latentLine', {'list': pointlist})
+    emit('latentLine', {'list': pointlist })
     
 @socketio.on('compare')
 def compare(data):
@@ -200,7 +200,7 @@ def generate_pattern(data):
     base_list = []
     for i in range(x.size()[0]):
         n = GraphHandler.decompose_node_hidden_state(x[i])
-        base_list.append( prediction2obj(n, lineTrainer) )
+        base_list.append( prediction2obj(n, lineTrainer) )pointlist
 
     info = {}
     info["prediction"] = prediction2obj(pred, lineTrainer)

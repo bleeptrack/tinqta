@@ -65,57 +65,67 @@ export class PaperCanvas extends HTMLElement {
 	
 	createMatchingLines(){
 		let ids = paper.project.activeLayer.children.length
-		let lines = paper.project.activeLayer.children
-		for(let i=0; i<ids; i++){
-			if(lines[i].length > 0){
-				this.processLine(lines[i])
-			}else{
-				//line.remove()
+		this.lines2process = [...paper.project.activeLayer.children]
+		let group = new Group()
+		
+		this.lines2process.forEach(l => {
+			if(l.length > 0){
+				this.processLine(l)
 			}
-			console.log(i)
-		}
+		})
+		
 	}
 	
 	interpolationData(data, factor){
-		
+		let group = []
 		for(let [idx, match] of data.list.entries()){
 			
-			console.log(idx, match)
-			let segs = match.points.map( elem => new Point(elem.x, elem.y))
-			
-			let line = new Path({segments: segs})
-			line.strokeWidth = 1
-			line.strokeColor = "blue"
-			line.position = view.center
-			console.log(line.position)
+			if(this.lines2process[idx].length > 0){
+				
 			
 			
+				console.log(idx, match)
+				let segs = match.map( elem => new Point(elem.x, elem.y))
+				
+				let line = new Path({segments: segs})
+				line.strokeWidth = 1
+				line.strokeColor = "blue"
+				line.position = view.center
+				
+				
+				
+				let backup = this.lines2process[idx].clone()
+				backup.strokeColor = 'blue'
+				line.strokeWidth = 2
+				
+				let [segmentedData, scale, angle] = this.createSegments(this.lines2process[idx]) 
+				
+				
+				let test = new Path()
+				//
+				test = segmentedData.clone()
 			
-			let [segmentedData, rot, sca] = this.createSegments(paper.project.activeLayer.children[idx]) 
-			paper.project.activeLayer.children[0].strokeWidth = 2
-			paper.project.activeLayer.children[0].strokeColor = 'black'
-			
-			let test = new Path()
-			//
-			test = segmentedData.clone()
-		
-			test.strokeWidth = 5
-			test.strokeColor = "red"
-			test.pivot = test.firstSegment.point
-		
-		
-			test.position = line.firstSegment.point
-			
-			test.interpolate(test, line, factor)
+				test.strokeColor = "red"
+				test.pivot = test.firstSegment.point
 			
 			
-			test.position = segmentedData.firstSegment.point
+				test.position = line.firstSegment.point
+				
+				test.interpolate(test, line, factor)
+				
+				test.position = segmentedData.firstSegment.point
+				
+				test.scale(scale)
+				test.rotate(angle*360)
+				group.push(test)
+				
+				
+				line.remove()
+			}
 			
-			test.opacity = 0.5
-			line.remove()
-		
 		}
-		
+		paper.project.activeLayer.removeChildren()
+		paper.project.activeLayer.addChildren(group)
 		
 	}
 	
@@ -200,6 +210,7 @@ export class PaperCanvas extends HTMLElement {
 		let segmentedPath = new Path()
 		
 		let dist = path.length / (this.config.nrPoints - 1)
+		console.log("len", path.length)
 		for (let i = 0; i < this.config.nrPoints - 1; i++) {
 			let p = path.getPointAt(dist * i).round()
 			segmentedPath.addSegment(p)
