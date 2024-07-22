@@ -39,14 +39,16 @@ onmessage = function(e) {
 	
 	this.samplePoints = _.shuffle(this.samplePoints)
 
-	/*
+	
 	let allStrokes = data.mlStrokes.length
+	let patternLayer = new Layer()
+	patternLayer.activate()
 	while(this.samplePoints.length > 0 && data.mlStrokes.length > 0){
 		drawML()
 		
 		postMessage({label: "creating shadow", percentage: (allStrokes-data.mlStrokes.length) * 50 / allStrokes + 50});
 	}
-	*/
+	
 	postMessage({svg: paper.project.exportJSON()});
 		
 	
@@ -207,8 +209,8 @@ onmessage = function(e) {
 
 		//c.scale(0.2)
 		//c.scale(scale, c.firstSegment.point)
-		c.scale(0.15)
-
+		c.scale(scale)
+		c.scale(0.1)
 		c.rotate(rot)
 		
 		c.position = this.samplePoints.pop()

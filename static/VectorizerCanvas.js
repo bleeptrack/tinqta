@@ -282,12 +282,15 @@ export class VectorizerCanvas extends HTMLElement {
 						this.shadow.getElementById("edge-canvas").style.visibility = "hidden"
 						paper.project.clear()
 						paper.project.importJSON(event.data.svg)
+						
+						/*
 						this.canvas.createMatchingLines()
 						
 						this.socket.emit("convertToLatentspace", {
 							name: this.modelName,
 							list: this.canvas.linelist,
 						})
+						*/
 						
 						
 						this.dispatchEvent(new CustomEvent("progress", {detail: {percentage: 100}}))
