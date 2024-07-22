@@ -76,7 +76,7 @@ export class PaperCanvas extends HTMLElement {
 		
 	}
 	
-	interpolationData(data, factor){
+	interpolationData(data){
 		let group = []
 		for(let [idx, match] of data.list.entries()){
 			
@@ -98,14 +98,19 @@ export class PaperCanvas extends HTMLElement {
 				backup.strokeColor = 'blue'
 				line.strokeWidth = 2
 				
+				
+				
 				let [segmentedData, scale, angle] = this.createSegments(this.lines2process[idx]) 
 				
+				let factor = Math.max( Math.min( 1 - (scale*4), 1), 0)
+				console.log("scale", scale, factor)
 				
 				let test = new Path()
 				//
 				test = segmentedData.clone()
 			
-				test.strokeColor = "red"
+				test.strokeColor = factor > 0 ? 'blue' : "red"
+				
 				test.pivot = test.firstSegment.point
 			
 			
@@ -115,6 +120,7 @@ export class PaperCanvas extends HTMLElement {
 				
 				test.position = segmentedData.firstSegment.point
 				
+				test.smooth({ type: 'continuous' })
 				test.scale(scale)
 				test.rotate(angle*360)
 				group.push(test)
@@ -210,7 +216,7 @@ export class PaperCanvas extends HTMLElement {
 		let segmentedPath = new Path()
 		
 		let dist = path.length / (this.config.nrPoints - 1)
-		console.log("len", path.length)
+		
 		for (let i = 0; i < this.config.nrPoints - 1; i++) {
 			let p = path.getPointAt(dist * i).round()
 			segmentedPath.addSegment(p)

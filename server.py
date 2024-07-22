@@ -200,7 +200,7 @@ def generate_pattern(data):
     base_list = []
     for i in range(x.size()[0]):
         n = GraphHandler.decompose_node_hidden_state(x[i])
-        base_list.append( prediction2obj(n, lineTrainer) )pointlist
+        base_list.append( prediction2obj(n, lineTrainer) )
 
     info = {}
     info["prediction"] = prediction2obj(pred, lineTrainer)
