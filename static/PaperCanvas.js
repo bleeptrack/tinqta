@@ -95,7 +95,7 @@ export class PaperCanvas extends HTMLElement {
 				
 				
 				let backup = this.lines2process[idx].clone()
-				backup.strokeColor = 'blue'
+				backup.strokeColor = 'red'
 				line.strokeWidth = 2
 				
 				
@@ -103,30 +103,34 @@ export class PaperCanvas extends HTMLElement {
 				let [segmentedData, scale, angle] = this.createSegments(this.lines2process[idx]) 
 				
 				let factor = Math.max( Math.min( 1 - (scale*4), 1), 0)
-				console.log("scale", scale, factor)
+				if(factor > 0){
+					let test = new Path()
+					//
+					test = segmentedData.clone()
 				
-				let test = new Path()
-				//
-				test = segmentedData.clone()
-			
-				test.strokeColor = factor > 0 ? 'blue' : "red"
-				
-				test.pivot = test.firstSegment.point
-			
-			
-				test.position = line.firstSegment.point
-				
-				test.interpolate(test, line, factor)
-				
-				test.position = segmentedData.firstSegment.point
-				
-				test.smooth({ type: 'continuous' })
-				test.scale(scale)
-				test.rotate(angle*360)
-				group.push(test)
+					test.strokeColor = factor > 0 ? 'blue' : "red"
+					
+					test.pivot = test.firstSegment.point
 				
 				
-				line.remove()
+					test.position = line.firstSegment.point
+					
+					test.interpolate(test, line, factor)
+					
+					test.position = segmentedData.firstSegment.point
+					
+					test.smooth({ type: 'continuous' })
+					test.scale(scale)
+					test.rotate(angle*360)
+					group.push(test)
+					//group.push(backup)
+					
+					line.remove()
+				}else{
+					group.push(backup)
+				}
+				
+				
 			}
 			
 		}
