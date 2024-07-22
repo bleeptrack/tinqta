@@ -64,9 +64,8 @@ export class PaperCanvas extends HTMLElement {
 	}
 	
 	createMatchingLines(){
-		let ids = paper.project.activeLayer.children.length
-		this.lines2process = [...paper.project.activeLayer.children]
-		let group = new Group()
+		let ids = paper.project.layers[0].children.length
+		this.lines2process = [...paper.project.layers[0].children]
 		
 		this.lines2process.forEach(l => {
 			if(l.length > 0){
@@ -77,6 +76,7 @@ export class PaperCanvas extends HTMLElement {
 	}
 	
 	interpolationData(data){
+		paper.project.layers[0].activate()
 		let group = []
 		for(let [idx, match] of data.list.entries()){
 			
@@ -126,6 +126,7 @@ export class PaperCanvas extends HTMLElement {
 					//group.push(backup)
 					
 					line.remove()
+					backup.remove()
 				}else{
 					group.push(backup)
 				}
@@ -134,8 +135,8 @@ export class PaperCanvas extends HTMLElement {
 			}
 			
 		}
-		paper.project.activeLayer.removeChildren()
-		paper.project.activeLayer.addChildren(group)
+		paper.project.layers[0].removeChildren()
+		paper.project.layers[0].addChildren(group)
 		
 	}
 	
