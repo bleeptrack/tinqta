@@ -59,6 +59,32 @@ export class WebcamGenerator extends HTMLElement {
 				progress-bar{
 					width: 100%;
 				}
+				
+				svg{
+					width: 80%;
+					height: auto;
+				}
+				g:first-child path{
+					stroke: teal;
+					stroke-width: 5;
+					stroke-opacity: 0.6;
+					stroke-linecap: round;
+					animation: dash ease-in-out forwards;
+					animation-duration: 8s;
+				}
+				
+				g:nth-child(2) path{
+					stroke: teal;
+					stroke-width: 3;
+					stroke-opacity: 0.8;
+					stroke-linecap: round;
+					animation: dash ease-in-out forwards;
+					animation-duration: 8s;
+				}
+				
+				@keyframes dash {
+					100% { stroke-dashoffset: 0; }
+				}
 			</style>
 			
 			
@@ -100,6 +126,13 @@ export class WebcamGenerator extends HTMLElement {
 				saveBtn.classList.add("scribble")
 				saveBtn.innerHTML = "SAVE"
 				this.progressbar.replaceWith(saveBtn)
+				
+				let svg = this.vectorizer.getSVG(false)
+				svg.querySelectorAll("path").forEach( p => {
+					p.style.strokeDasharray = p.getTotalLength() 
+					p.style.strokeDashoffset = p.getTotalLength() 
+				})
+				this.shadow.getElementById("container").replaceWith(svg)
 			}else{
 				this.progressbar.setPercentage(data.detail.percentage, data.detail.label)
 			}

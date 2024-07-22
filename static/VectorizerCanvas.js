@@ -43,7 +43,9 @@ export class VectorizerCanvas extends HTMLElement {
 		this.socket.on("latentLine", (data) => {
 			console.log("latentLine received", data)
 			console.log(data)
+			this.dispatchEvent(new CustomEvent("progress", {detail: {percentage: 90, label: "adjusting edge lines"}}));
 			this.canvas.interpolationData(data, 0.1)
+			this.dispatchEvent(new CustomEvent("progress", {detail: {percentage: 100}}))
 		})
 		
 
@@ -293,7 +295,7 @@ export class VectorizerCanvas extends HTMLElement {
 						
 						
 						
-						this.dispatchEvent(new CustomEvent("progress", {detail: {percentage: 100}}))
+						
 					}else{
 						console.log("unknown worker message")
 					}
@@ -441,9 +443,9 @@ export class VectorizerCanvas extends HTMLElement {
 
 
 
-	getSVG(){
+	getSVG(asString=true){
 		this.raster.remove()
-		return project.exportSVG({ asString: true, bounds: 'content' })
+		return project.exportSVG({ asString: asString, bounds: 'content' })
 	}
 
 

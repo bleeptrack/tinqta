@@ -46,7 +46,7 @@ onmessage = function(e) {
 	while(this.samplePoints.length > 0 && data.mlStrokes.length > 0){
 		drawML()
 		
-		postMessage({label: "creating shadow", percentage: (allStrokes-data.mlStrokes.length) * 50 / allStrokes + 50});
+		postMessage({label: "creating shadow", percentage: (allStrokes-data.mlStrokes.length) * 30 / allStrokes + 50});
 	}
 	
 	postMessage({svg: paper.project.exportJSON()});

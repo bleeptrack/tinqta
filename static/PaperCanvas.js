@@ -64,6 +64,7 @@ export class PaperCanvas extends HTMLElement {
 	}
 	
 	createMatchingLines(){
+		paper.project.layers[0].activate()
 		let ids = paper.project.layers[0].children.length
 		this.lines2process = [...paper.project.layers[0].children]
 		
@@ -130,7 +131,7 @@ export class PaperCanvas extends HTMLElement {
 				}else{
 					group.push(backup)
 				}
-				
+				segmentedData.remove()
 				
 			}
 			
