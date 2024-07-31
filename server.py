@@ -273,7 +273,7 @@ def train(data):
 
 @app.route("/")
 def start():
-    return render_template('index.html')
+    return render_template('webcam.html')
 
 @app.route("/train")
 def website_train():
