@@ -80,11 +80,17 @@ export class VectorizerCanvas extends HTMLElement {
 				button{
 					margin: 10%;
 				}
+				img{
+					position: absolute;
+					top: 0px;
+					left: 0px;
+					
+				}
 			</style>
 			
 			
 			<div id="container">
-				<button>Upload Images</button>
+				<input type="file" name="image" accept="image/*" id="image-chooser">
 				<button id="start-webcam">start webcam</button>
 			</div>
 			
@@ -96,6 +102,9 @@ export class VectorizerCanvas extends HTMLElement {
 		this.shadow.appendChild(container.content.cloneNode(true));
 		this.shadow.getElementById("start-webcam").addEventListener("click", () => {
 			this.activateWebcam()
+		})
+		this.shadow.getElementById("image-chooser").addEventListener("change", (e) => {
+			this.activateImage(e)
 		})
 		
 		
@@ -289,7 +298,12 @@ export class VectorizerCanvas extends HTMLElement {
 					if(event.data.percentage){
 						this.dispatchEvent(new CustomEvent("progress", {detail: event.data}));
 					}else if(event.data.svg){
-						this.shadow.getElementById("webcam").style.visibility = "hidden"
+						if(this.shadow.getElementById("webcam")){
+							this.shadow.getElementById("webcam").style.visibility = "hidden"
+						}
+						if(this.shadow.getElementById("image")){
+							this.shadow.getElementById("image").style.visibility = "hidden"
+						}
 						this.shadow.getElementById("edge-canvas").style.visibility = "hidden"
 						paper.project.clear()
 						paper.project.importJSON(event.data.svg)
@@ -393,7 +407,51 @@ export class VectorizerCanvas extends HTMLElement {
 	}
 	
 
-	
+	activateImage(e){
+
+		this.shadow.getElementById("container").innerHTML = `
+			<div id="canvas-container"></div>
+			<img id="image"></img>
+			<canvas id="edge-canvas"></canvas>
+		`
+		let img = this.shadow.getElementById("image")
+		img.src = URL.createObjectURL(e.target.files.item(0))	
+		
+		this.video = img
+		
+		img.addEventListener("load", ()=>{
+			
+					
+			this.vidw = 640
+			this.vidh = 480
+			img.style.width = `${this.vidw}px`
+			img.style.height = `${this.vidh}px`
+			
+			//console.log(img)
+			
+			//this.video.width = this.vidw
+			//this.video.height= this.vidh
+			
+			
+			this.ctx = this.shadow.getElementById("edge-canvas").getContext('2d')
+			
+			let canvcont = this.shadow.getElementById('canvas-container');
+			canvcont.style.width = `${this.vidw}px`
+			canvcont.style.height= `${this.vidh}px`
+			
+			this.edgeCanvas = this.shadow.getElementById('edge-canvas');
+			this.edgeCanvas.width = this.vidw
+			this.edgeCanvas.height = this.vidh
+			
+			
+			this.shadow.getElementById("canvas-container").appendChild(this.canvas)
+			paper.view.onFrame = this.tick.bind(this)
+			this.raster = new Raster([this.vidw,this.vidh]);
+			
+		})
+		
+		
+	}
 	
 	activateWebcam(){
 		if (navigator.mediaDevices.getUserMedia) {
