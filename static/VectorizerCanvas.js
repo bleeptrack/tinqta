@@ -77,18 +77,27 @@ export class VectorizerCanvas extends HTMLElement {
 				#canvas-container{
 					
 				}
+				button{
+					margin: 10%;
+				}
 			</style>
 			
+			
 			<div id="container">
-				<div id="canvas-container"></div>
-				<video id="webcam"></video>
-				<canvas id="edge-canvas"></canvas>
+				<button>Upload Images</button>
+				<button id="start-webcam">start webcam</button>
 			</div>
 			
 		`;
+		
+		
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
+		this.shadow.getElementById("start-webcam").addEventListener("click", () => {
+			this.activateWebcam()
+		})
+		
 		
 		/*
 		this.models = [
@@ -386,17 +395,20 @@ export class VectorizerCanvas extends HTMLElement {
 
 	
 	
-
-
-	connectedCallback() {
-		
-		
-		
-		 if (navigator.mediaDevices.getUserMedia) {
+	activateWebcam(){
+		if (navigator.mediaDevices.getUserMedia) {
 			navigator.mediaDevices.getUserMedia({ video: true })
 				.then((stream) => {
 					console.log("stream")
-					this.video = this.shadow.getElementById('webcam');
+					
+					
+					this.shadow.getElementById("container").innerHTML = `
+						<div id="canvas-container"></div>
+						<video id="webcam"></video>
+						<canvas id="edge-canvas"></canvas>
+					`
+
+					this.video = this.shadow.getElementById("webcam")
 					this.video.srcObject = stream;
 					this.video.play();
 					
@@ -433,7 +445,10 @@ export class VectorizerCanvas extends HTMLElement {
 				console.log("Something went wrong!", err);
 				});
 			}
-			
+	}
+
+	connectedCallback() {
+	
 	}
 	
 
