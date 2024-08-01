@@ -44,7 +44,7 @@ export class VectorizerCanvas extends HTMLElement {
 			console.log("latentLine received", data)
 			console.log(data)
 			this.dispatchEvent(new CustomEvent("progress", {detail: {percentage: 90, label: "adjusting edge lines"}}));
-			this.canvas.interpolationData(data, 0.1)
+			this.canvas.interpolationData(data, false) //0.1
 			this.dispatchEvent(new CustomEvent("progress", {detail: {percentage: 100}}))
 		})
 		
@@ -422,8 +422,8 @@ export class VectorizerCanvas extends HTMLElement {
 		img.addEventListener("load", ()=>{
 			
 					
-			this.vidw = 640
-			this.vidh = 480
+			this.vidw = img.naturalWidth
+			this.vidh = img.naturalHeight
 			img.style.width = `${this.vidw}px`
 			img.style.height = `${this.vidh}px`
 			

@@ -76,7 +76,7 @@ export class PaperCanvas extends HTMLElement {
 		
 	}
 	
-	interpolationData(data){
+	interpolationData(data, doInterpolation){
 		paper.project.layers[0].activate()
 		let group = []
 		for(let [idx, match] of data.list.entries()){
@@ -103,8 +103,9 @@ export class PaperCanvas extends HTMLElement {
 				
 				let [segmentedData, scale, angle] = this.createSegments(this.lines2process[idx]) 
 				
+				
 				let factor = Math.max( Math.min( 1 - (scale*4), 1), 0)
-				if(factor > 0){
+				if(factor > 0 && doInterpolation){
 					let test = new Path()
 					//
 					test = segmentedData.clone()
