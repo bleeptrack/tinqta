@@ -124,7 +124,12 @@ export class PatternTrainer extends HTMLElement {
 	saveLines(){
 		let link = document.createElement('a');
 		link.download = 'tinqta-training.json';
-		link.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.epochLines));
+		let data = {
+			"training": this.epochLines,
+			"linelist": this.canvas.linelist,
+			"original": this.canvas.originalLines
+		}
+		link.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data));
 		link.click();
 	}
 
