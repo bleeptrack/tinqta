@@ -37,24 +37,44 @@ export class WebcamGenerator extends HTMLElement {
 			<style>
 				
 				#container{
-					width: 100%;
-					height: 100%;
+					width: 80%;
+					height: 75%;
 					display: flex;
 					gap: 10vh;
-					
+					flex-direction: column;
+					justify-content: space-around;
+					padding: 10%;
 				}
-				#left{
-					width: 40vw;
+				#wrapper{
+					border: 5px dashed grey;
+					
+					position: relative;
+					width: 100%;
 					height: 100%;
-					backgroundColor: grey;
+					padding: 5px;
+				}
+				#window{
+					width: 100%;
+					height: 100%;
+					overflow: scroll;
 					display: flex;
 					flex-direction: column;
 					flex-grow: 1;
 					align-items: center;
+					justify-content: center;
+				}
+				#settings{
+					position: absolute;
+					bottom: 0;
+					width: 100%;
+					height: 20%;
+					display: flex;
+					flex-direction: column;
+					justify-content: space-evenly;
+					align-items: center;
 				}
 				#right{
-					width: 30vw;
-					height: 100%;
+					background-color: grey;
 				}
 				progress-bar{
 					width: 100%;
@@ -89,15 +109,19 @@ export class WebcamGenerator extends HTMLElement {
 			
 			
 			<div id="container">
-				<div id="left">
-					<vectorizer-canvas id="vec"></vectorizer-canvas>
-				</div>
-				<div id="right">
-					<input type="range" min="1" max="100" value="20" class="slider" id="edge-min">
-					<input type="range" min="1" max="100" value="30" class="slider" id="edge-max">
-					<select name="model" id="model">
-						<option value="random">random</option>
-					</select>
+				<div id="wrapper">
+					<div id="window">
+						<vectorizer-canvas id="vec"></vectorizer-canvas>
+					</div>
+					<div id="settings">
+						<div>
+							<input type="range" min="1" max="100" value="20" class="slider" id="edge-min">
+							<input type="range" min="1" max="100" value="30" class="slider" id="edge-max">
+							<select name="model" id="model">
+								<option value="random">random</option>
+							</select>
+						</div>
+					</div>
 				</div>
 			</div>
 		`;
@@ -111,7 +135,7 @@ export class WebcamGenerator extends HTMLElement {
 			startBtn.id = "start"
 			startBtn.classList.add("scribble")
 			startBtn.innerHTML = "START"
-			this.vectorizer.after(startBtn)
+			this.shadow.getElementById("settings").appendChild(startBtn)
 			
 			startBtn.addEventListener("click", () => {
 				this.vectorizer.startProcess()
@@ -140,7 +164,17 @@ export class WebcamGenerator extends HTMLElement {
 			}
 		})
 		
-		this.shadow.getElementById("edge-min").addEventListener("change", (event) => {
+		
+		
+		
+		
+		
+		this.vectorizer.edgemin = sessionStorage.getItem("tinqta:edge-min") || 20
+		this.vectorizer.edgemax = sessionStorage.getItem("tinqta:edge-max") || 50
+		this.shadow.getElementById("edge-min").value = this.vectorizer.edgemin
+		this.shadow.getElementById("edge-max").value = this.vectorizer.edgemax
+		
+		 this.shadow.getElementById("edge-min").addEventListener("change", (event) => {
 			this.vectorizer.edgemin = event.target.value
 			sessionStorage.setItem("tinqta:edge-min", event.target.value)
 		})
@@ -155,10 +189,7 @@ export class WebcamGenerator extends HTMLElement {
 			this.vectorizer.setModelName(event.target.value)
 		})
 		
-		this.vectorizer.edgemin = sessionStorage.getItem("tinqta:edge-min") || 20
-		this.vectorizer.edgemax = sessionStorage.getItem("tinqta:edge-max") || 50
-		this.shadow.getElementById("edge-min").value = this.vectorizer.edgemin
-		this.shadow.getElementById("edge-max").value = this.vectorizer.edgemax
+		
 		
 	}
 

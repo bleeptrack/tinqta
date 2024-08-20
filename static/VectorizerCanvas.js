@@ -86,12 +86,17 @@ export class VectorizerCanvas extends HTMLElement {
 					left: 0px;
 					
 				}
+				#start-container{
+					display: flex;
+				}
 			</style>
 			
 			
 			<div id="container">
-				<input type="file" name="image" accept="image/*" id="image-chooser">
-				<button id="start-webcam">start webcam</button>
+				<div id="start-container">
+					<button id="image-chooser" class="scribble">choose photo</button>
+					<button id="start-webcam" class="scribble">start webcam</button>
+				</div>
 			</div>
 			
 		`;
@@ -103,8 +108,14 @@ export class VectorizerCanvas extends HTMLElement {
 		this.shadow.getElementById("start-webcam").addEventListener("click", () => {
 			this.activateWebcam()
 		})
-		this.shadow.getElementById("image-chooser").addEventListener("change", (e) => {
-			this.activateImage(e)
+		this.shadow.getElementById("image-chooser").addEventListener("click", () => {
+			let input = document.createElement('input');
+			input.type = 'file';
+			input.onchange = (e) => {
+				this.activateImage(e)
+			}
+			input.click()
+			
 		})
 		
 		
@@ -415,6 +426,7 @@ export class VectorizerCanvas extends HTMLElement {
 			<canvas id="edge-canvas"></canvas>
 		`
 		let img = this.shadow.getElementById("image")
+		console.log(e)
 		img.src = URL.createObjectURL(e.target.files.item(0))	
 		
 		this.video = img
