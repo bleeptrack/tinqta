@@ -5,6 +5,7 @@ from Model import LineTrainer, PatternTrainer
 import json
 import os
 import os.path as osp
+from os import listdir
 from config import config
 import random
 import numpy as np
@@ -20,6 +21,7 @@ Path("./baseData").mkdir(exist_ok=True)
 Path("./lineModels").mkdir(exist_ok=True)
 
 gh = GraphHandler()
+
 
 
 #path = osp.join(osp.dirname(osp.realpath(__file__)), 'data', 'dataset-test')
@@ -54,6 +56,9 @@ def prediction2obj(pred, lineTrainer, ref_id=None):
 def connect():
     print("User connected")
     emit('init', config)
+    mlist = getModels()
+    print(mlist)
+    emit('models', mlist)
 
 #@socketio.on('new line')
 #def new_line(points):
@@ -80,7 +85,7 @@ def new_dataset(data):
         lineTrainer = LineTrainer(data['name'])
         lineTrainer.trainModel(send_progress)
         
-def send_progress(trainer, text):
+def send_progress(trainer, text, label=None):
    
     if isinstance(text, list):
         pointlist = []
@@ -92,14 +97,28 @@ def send_progress(trainer, text):
         emit('progress', {'lines': pointlist} )
     else:
         print("sending progress", text)
-        emit('progress', {'percent':text} )
+        emit('progress', {'percent':text, 'label':label} )
+        
+def getLatentspaceLine(data):
+    lineTrainer = LineTrainer(data['name'])
+    x, edge_index = gh.create_line_graph(data['points'])
+    z = lineTrainer.encodeLineVector(x, edge_index)
+    line = lineTrainer.decode_latent_vector(z)
+
+def getModels():
+    onlyfiles = [f for f in listdir("./lineModels") if osp.isfile(osp.join("./lineModels", f))]
+    return onlyfiles
 
 @socketio.on('generate')
 def generate(data):
     print(data)
     print("RAW", gh.raw_data)
-
-    trainer = LineTrainer(data['name'])
+    
+    if data['name'] == "random":
+        print("choosing RANDOM model")
+        trainer = LineTrainer(random.choice(getModels()))
+    else:
+        trainer = LineTrainer(data['name'])
 
     tensors, scales, rotations = trainer.generate(data['nr'], 0.5)
     pointlist = []
@@ -108,6 +127,35 @@ def generate(data):
         pointlist.append(tensor2Points(tensor))
 
     emit('result', {'list': pointlist, 'scales':scales, 'rotations':rotations})
+    
+@socketio.on('convertToLatentspace')
+def convertToLatentspace(data):
+    print(data)
+    
+    
+    if data['name'] == "random":
+        print("choosing RANDOM model")
+        trainer = LineTrainer(random.choice(getModels()))
+    else:
+        trainer = LineTrainer(data['name'])
+        
+    pointlist = []    
+    for line in data['list']:    
+
+        x, edge_index = gh.create_line_graph(line['points'])
+        z = trainer.encodeLineVector(x, edge_index)
+        zMatch = trainer.getClosestMatch(z)
+        
+        
+        latentLine = trainer.decode_latent_vector(zMatch)
+        pointlist.append(tensor2Points(latentLine))
+    
+    
+
+    #for tensor in tensors:
+    #    pointlist.append(tensor2Points(tensor))
+
+    emit('latentLine', {'list': pointlist })
     
 @socketio.on('compare')
 def compare(data):
@@ -138,9 +186,6 @@ def new_pattern(data):
     #todo training hier ist broken ||||| ist das so?
     pt = PatternTrainer(data['name'])
     pt.trainModel()
-
-
-
 
 
 @socketio.on('generate pattern')
@@ -228,11 +273,15 @@ def train(data):
 
 @app.route("/")
 def start():
-    return render_template('index.html')
+    return render_template('webcam.html')
 
 @app.route("/train")
 def website_train():
     return render_template('train.html')
+
+@app.route("/webcam")
+def website_webcam():
+    return render_template('webcam.html')
 
 #@app.route("/photo")
 #def website_photo():

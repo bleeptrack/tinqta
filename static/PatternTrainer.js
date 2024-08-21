@@ -1,6 +1,7 @@
 'use strict';
 import { SceneButton } from './SceneButton.js';
 import { PaperCanvas } from './PaperCanvas.js';
+import { ProgressBar } from './ProgressBar.js';
 import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js";
 
 export class PatternTrainer extends HTMLElement {
@@ -10,17 +11,23 @@ export class PatternTrainer extends HTMLElement {
 		this.socket = io();
 		this.shadow = this.attachShadow({ mode: 'open' });
 		this.canvas = new PaperCanvas()
+		this.epochLines = []
+		
 		
 		this.socket.on("init", (config) => {
 			console.log("config received", config)
 			this.canvas.setConfig(config)
+			
 		})
 		
 		this.socket.on("progress", (text) => {
 			console.log("progress received", text)
-			if(text.lines){
+			if(text.lines){				
 				this.canvas.trainingEpoch(text)
+				this.epochLines.push(text)
 				
+			}else if(text.percent){
+				this.progressbar.setPercentage(Number(text.percent), text.label)
 			}
 		})
 		
@@ -46,6 +53,7 @@ export class PatternTrainer extends HTMLElement {
 					flex: 1;
 					border: 2px solid black;
 					position: relative;
+					min-height: 0;
 				}
 				input{
 					max-width: 40vw;
@@ -90,6 +98,7 @@ export class PatternTrainer extends HTMLElement {
 		this.shadow.getElementById("undo").addEventListener("click", () => {
 			this.canvas.undo()
 		})
+		
 		this.shadow.getElementById("train").addEventListener("click", () => {
 			console.log(this.canvas.linelist)
 			console.log("name:", this.shadow.getElementById("name").innerHTML)
@@ -99,14 +108,29 @@ export class PatternTrainer extends HTMLElement {
 				list: this.canvas.linelist,
 			})
 			
+			this.progressbar = new ProgressBar()
+			this.shadow.getElementById("train").replaceWith(this.progressbar)
+			
 		})
-
+		
 	}
 
 
 	connectedCallback() {
+		window.downloadLines = this.saveLines.bind(this)
 		
-		
+	}
+	
+	saveLines(){
+		let link = document.createElement('a');
+		link.download = 'tinqta-training.json';
+		let data = {
+			"training": this.epochLines,
+			"linelist": this.canvas.linelist,
+			"original": this.canvas.originalLines
+		}
+		link.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data));
+		link.click();
 	}
 
 }
