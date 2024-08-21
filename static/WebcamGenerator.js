@@ -37,13 +37,14 @@ export class WebcamGenerator extends HTMLElement {
 			<style>
 				
 				#container{
-					width: 80%;
-					height: 75%;
+					width: 100%;
+					height: 100%;
 					display: flex;
 					gap: 10vh;
 					flex-direction: column;
 					justify-content: space-around;
-					padding: 10%;
+					padding: 3vw;
+					box-sizing: border-box; 
 				}
 				#wrapper{
 					border: 5px dashed grey;
@@ -62,6 +63,7 @@ export class WebcamGenerator extends HTMLElement {
 					flex-grow: 1;
 					align-items: center;
 					justify-content: center;
+					scrollbar-width: none;
 				}
 				#settings{
 					position: absolute;

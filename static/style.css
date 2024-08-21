@@ -36,37 +36,75 @@ html, body{
     touch-action: manipulation;
     }
 
-    .scribble:focus {
-    outline: 0;
-    }
+.scribble:focus {
+  outline: 0;
+}
 
-    .scribble:after {
-    content: '';
-    position: absolute;
-    border: 2px solid #000000;
-    bottom: 4px;
-    left: 4px;
-    width: calc(100% - 1px);
-    height: calc(100% - 1px);
-    }
+.scribble:after {
+  content: '';
+  position: absolute;
+  border: 2px solid #000000;
+  bottom: 4px;
+  left: 4px;
+  width: calc(100% - 1px);
+  height: calc(100% - 1px);
+}
 
-    .scribble:hover:after {
-    bottom: 2px;
-    left: 2px;
-    }
+.scribble:hover:after {
+  bottom: 2px;
+  left: 2px;
+}
+
+.input{
+  background-color: lightgrey !important;
+}
+
+.input:after{
+  bottom: 2px !important;
+  left: 2px !important;
+}
+
+.input:hover, .scribble:focus{
+  opacity: 0.8;
+}
     
-    .input{
-      background-color: lightgrey !important;
-    }
-    
-    .input:after{
-      bottom: 2px !important;
-      left: 2px !important;
-    }
-    
-    .input:hover, .scribble:focus{
-      opacity: 0.8;
-    }
+  
+input[type="range"]{
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  width: 15rem;
+}
+
+/***** Chrome, Safari, Opera, and Edge Chromium *****/
+input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--main-color);
+  height: 0.5rem;
+}
+
+/******** Firefox ********/
+input[type="range"]::-moz-range-track {
+  background: var(--main-color);
+  height: 0.5rem;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+   -webkit-appearance: none; /* Override default look */
+   appearance: none;
+   margin-top: -12px; /* Centers thumb on the track */
+   background-color: black;
+   height: 2rem;
+   width: 1rem;    
+}
+
+input[type="range"]::-moz-range-thumb {
+    border: none; /*Removes extra border that FF applies*/
+    border-radius: 0; /*Removes default border-radius that FF applies*/
+    background-color: black;
+    height: 2rem;
+    width: 1rem;
+}
 
 
 

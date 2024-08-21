@@ -2,17 +2,14 @@
 AI created illustrations in your own scribble style!
 
 - easy and quick: train models on your own style
-- transfere images into your scribble style 
+- transfer images into your scribble style 
 - creates beautiful vector graphics: small in size and easy to adjust or animate
 
 ## 🧑‍💻 Installation
 
 ### docker (recommended)
 
-Simply install the container via 
-`docker pull bleeptrack/tinqta:main`
-and afterwards run it 
-`docker run docker run -p 127.0.0.1:5000:5000 bleeptrack/tinqta:main`
+Simply clone the repository and install via `docker compose up` . Afterwards call `localhost:8000` from your browser.
 
 ### local install with python env
 Clone the repository andstart a python environment.
@@ -23,8 +20,8 @@ Afterwards you can start tinqta with
 `python server.py`
 
 ## ✏️ Usage
-tinqta is still under heavy developement and will likely change a lot!
-More info in unsage coming soon!
+tinqta is still under heavy development and will likely change a lot!
+More info on usage coming soon!
 
 ## 👀 Projects using tinqta
 - [AI Doodles](https://www.youtube.com/playlist?list=PLSV1FvtNZeQF81iLqAgOjbA1cLRTSrcFl) by [bleeptrack](htttps://www.bleeptrack.de)
