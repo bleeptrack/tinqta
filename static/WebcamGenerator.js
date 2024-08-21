@@ -153,14 +153,14 @@ export class WebcamGenerator extends HTMLElement {
 				saveBtn.innerHTML = "SAVE"
 				this.progressbar.replaceWith(saveBtn)
 				
-				/*
+				
 				let svg = this.vectorizer.getSVG(false)
 				svg.querySelectorAll("path").forEach( p => {
 					p.style.strokeDasharray = p.getTotalLength() 
 					p.style.strokeDashoffset = p.getTotalLength() 
 				})
-				this.shadow.getElementById("container").replaceWith(svg)
-				*/
+				this.shadow.getElementById("vec").replaceWith(svg)
+				
 			}else{
 				this.progressbar.setPercentage(data.detail.percentage, data.detail.label)
 			}
