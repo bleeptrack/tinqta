@@ -31,8 +31,8 @@ onmessage = function(e) {
 		}
 	})
 
-	console.log("SEGMENTATION", data.result)
-	compressColors(data.video, res, data.result.partMask)
+	
+	compressColors(data.video, res)
 
 	//this.shadow.getElementById("webcam").remove()
 	//this.shadow.getElementById("edge-canvas").remove()
@@ -177,20 +177,18 @@ onmessage = function(e) {
 		return Math.abs( Math.sqrt( Math.pow(c.red, 2) + Math.pow(c.blue, 2) + Math.pow(c.green, 2) ) )
 	}
 	
-	function compressColors(imageData, palette, backgroundMask){
+	function compressColors(imageData, palette){
 		for(let x = 0; x<imageData.width; x++){
 			for(let y = 0; y<imageData.height; y++){
 				
-				if(isTransparent(x, y, backgroundMask, imageData.width)){
-					setPixel(x, y, imageData, 255, 255, 255)
-				}else{
+				
 					let closeColIdx = findClosestColor(getPixelAsColor(x,y,imageData), palette)
 					
 					setPixel(x, y, imageData, Math.round(palette[closeColIdx].red*255), Math.round(palette[closeColIdx].green*255), Math.round(palette[closeColIdx].blue*255))
 					if(closeColIdx < 1){
 						this.samplePoints.push([x,y])
 					}
-				}
+				
 			}
 		}
 	}
