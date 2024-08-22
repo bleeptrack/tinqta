@@ -1,10 +1,13 @@
 'use strict';
 import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js"
 import lodash from 'https://cdn.jsdelivr.net/npm/lodash@4.17.21/+esm'
+import { removeBackground } from 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm'
 import { PaperCanvas } from './PaperCanvas.js'
 
 export class VectorizerCanvas extends HTMLElement {
 	constructor(n) {
+		
+		
 		
 		super();
 		this.socket = io();
@@ -152,7 +155,8 @@ export class VectorizerCanvas extends HTMLElement {
 		paper.view.onFrame = undefined
 		console.log("start")
 
-		this.raster.setImageData(this.ctx.getImageData(0, 0, this.vidw, this.vidh), [0,0])
+		let imgData = this.ctx.getImageData(0, 0, this.vidw, this.vidh)
+		this.raster.setImageData(imgData, [0,0])
 		this.raster.position = view.center;
 		//this.shadow.getElementById("webcam").remove()
 		this.ctx = undefined
@@ -161,7 +165,11 @@ export class VectorizerCanvas extends HTMLElement {
 		var context = this.canvasTMP.getContext('2d');
 		context.canvas.width  = this.vidw;
 		context.canvas.height = this.vidh;
+		context.fillStyle = "white"
+		context.fillRect(0, 0, this.vidw, this.vidh)
 		context.drawImage(this.video, 0, 0, this.vidw, this.vidh);
+		
+		//let imgData = context.getImageData(0, 0, this.vidw, this.vidh)
 
 		const colorThief = new ColorThief();
 		this.res = colorThief.getPalette(this.canvasTMP, 10);
@@ -176,8 +184,8 @@ export class VectorizerCanvas extends HTMLElement {
 	
 		console.log("lengths", this.mlStrokes.length )
 		
-		//result ist das freigestellte bild
-			
+		
+		
 			
 			
 			
@@ -228,12 +236,15 @@ export class VectorizerCanvas extends HTMLElement {
 					
 				});
 				
+				
 	}
 	
 	tick(){
 		//console.log(this.shadow.getElementById("edge-canvas").getContext('2d'))
 		if(this.ctx){
 			//this.ctx = canvas.getContext('2d');
+			this.ctx.fillStyle = "white"
+			this.ctx.fillRect(0, 0, this.vidw, this.vidh)
 			this.ctx.drawImage(this.video, 0, 0, this.vidw, this.vidh);
 			var imageData = this.ctx.getImageData(0, 0, this.vidw, this.vidh);
 
@@ -282,10 +293,27 @@ export class VectorizerCanvas extends HTMLElement {
 			<canvas id="edge-canvas"></canvas>
 		`
 		let img = this.shadow.getElementById("image")
-		console.log(e)
-		img.src = URL.createObjectURL(e.target.files.item(0))	
 		
-		this.video = img
+		let bgRemoveConfig = {
+			//model: 'isnet' | 'isnet_fp16' | 'isnet_quint8'; // The model to use. (Default "isnet_fp16")
+			output: {
+				format: 'image/png' //'image/png' | 'image/jpeg' | 'image/webp'; // The output format. (Default "image/png")
+				//quality: 0.8; // The quality. (Default: 0.8)
+				//type: 'foreground' | 'background' | 'mask'; // The output type. (Default "foreground")
+			}
+		}
+		console.log(URL.createObjectURL(e.target.files.item(0)))
+		removeBackground(URL.createObjectURL(e.target.files.item(0)), bgRemoveConfig).then((blob) => {
+		// The result is a blob encoded as PNG. It can be converted to an URL to be used as HTMLImage.src
+			const url = URL.createObjectURL(blob);
+			
+			img.src = url
+			console.log(url)
+			this.video = img
+			
+		})
+		
+		
 		
 		img.addEventListener("load", ()=>{
 			
