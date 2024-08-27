@@ -36,6 +36,11 @@ html, body{
     touch-action: manipulation;
     }
 
+.scribble:disabled{
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .scribble:focus {
   outline: 0;
 }

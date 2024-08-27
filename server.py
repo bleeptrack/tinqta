@@ -65,6 +65,29 @@ def connect():
 #    print("new line received", points)
 #    bd.createData(points)
 
+@socketio.on('deleteModel')
+def delete_model(data):
+    model_name = data['modelName']
+    model_path = osp.join("./lineModels", model_name)
+    model_path_basedata = osp.join("./baseData", model_name + "-line.pt")
+    
+    if osp.exists(model_path):
+        try:
+            os.remove(model_path)
+            os.remove(model_path_basedata)
+            print(f"Model {model_name} deleted successfully.")
+            emit('modelDeleted', {'status': 'success', 'message': f'Model {model_name} deleted successfully.'})
+        except Exception as e:
+            print(f"Error deleting model {model_name}: {str(e)}")
+            emit('modelDeleted', {'status': 'error', 'message': f'Error deleting model {model_name}: {str(e)}'})
+    else:
+        print(f"Model {model_name} not found.")
+        emit('modelDeleted', {'status': 'error', 'message': f'Model {model_name} not found.'})
+
+    # Update the list of available models
+    mlist = getModels()
+    emit('models', mlist)
+
 
 @socketio.on('raw data')
 def raw_data(data):
@@ -265,9 +288,9 @@ def extend_pattern(data):
         emit('extention', info)
 
 
-@socketio.on('train')
-def train(data):
-    trainer.trainModel(data['name'])
+#@socketio.on('train')
+#def train(data):
+#    trainer.trainModel(data['name'])
 
 ###### ROUTES
 

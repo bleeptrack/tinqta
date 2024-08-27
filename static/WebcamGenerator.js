@@ -16,12 +16,18 @@ export class WebcamGenerator extends HTMLElement {
 		})
 		this.socket.on("models", (models) => {
 			console.log("models received", models)
-			let select = this.shadow.getElementById("model")
-			for(let modelname of models){
-				let option = document.createElement("option")
-				option.value = modelname
-				option.innerHTML = modelname
-				select.appendChild(option)
+			let ul = this.shadow.getElementById("model-list");
+			if(ul){
+				ul.innerHTML = '';
+				for(let modelname of models){
+					let li = document.createElement('li');
+					li.dataset.value = modelname;
+					li.innerHTML = `
+						<span>${modelname}</span>
+						<button class="delete-option">X</button>
+					`;
+					ul.appendChild(li);
+				}
 			}
 		})
 		
@@ -70,10 +76,10 @@ export class WebcamGenerator extends HTMLElement {
 					bottom: 0;
 					width: 100%;
 					height: 20%;
-					display: flex;
 					flex-direction: column;
 					justify-content: space-evenly;
 					align-items: center;
+					display: none;
 				}
 				#right{
 					background-color: grey;
@@ -86,22 +92,13 @@ export class WebcamGenerator extends HTMLElement {
 					width: 80%;
 					height: auto;
 				}
-				g:first-child path{
-					stroke: teal;
-					stroke-width: 5;
-					stroke-opacity: 0.6;
-					stroke-linecap: round;
-					animation: dash ease-in-out forwards;
-					animation-duration: 8s;
-				}
 				
-				g:nth-child(2) path{
-					stroke: teal;
-					stroke-width: 3;
-					stroke-opacity: 0.8;
-					stroke-linecap: round;
-					animation: dash ease-in-out forwards;
-					animation-duration: 8s;
+
+				.custom-dropdown{
+					display: flex;
+					justify-content: center;
+					align-items: center;
+					margin-top: 2vh;
 				}
 				
 				@keyframes dash {
@@ -116,12 +113,24 @@ export class WebcamGenerator extends HTMLElement {
 						<vectorizer-canvas id="vec"></vectorizer-canvas>
 					</div>
 					<div id="settings">
-						<div>
+						<div id="settings-edge">
+							<label for="edge-detail">Edge Detail:</label>
+							<input type="range" min="1" max="8" value="2" class="slider" id="edge-detail">
+							<label for="edge-min">Edge Min:</label>
 							<input type="range" min="1" max="100" value="20" class="slider" id="edge-min">
+							<label for="edge-max">Edge Max:</label>
 							<input type="range" min="1" max="100" value="30" class="slider" id="edge-max">
-							<select name="model" id="model">
-								<option value="random">random</option>
-							</select>
+							<div class="custom-dropdown">
+								<button id="dropdown-toggle" class="scribble">Select Model</button>
+								<div id="dropdown-popover" popover>
+									<ul id="model-list">
+										<li data-value="random">
+											<span>random</span>
+										</li>
+									</ul>
+									<button id="add-model" class="scribble">Add Model</button>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -130,6 +139,35 @@ export class WebcamGenerator extends HTMLElement {
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
+
+		const toggle = this.shadow.getElementById('dropdown-toggle');
+		const popover = this.shadow.getElementById('dropdown-popover');
+		const modelList = this.shadow.getElementById('model-list');
+		const addModelBtn = this.shadow.getElementById('add-model');
+
+		toggle.addEventListener('click', () => popover.togglePopover());
+
+		modelList.addEventListener('click', (e) => {
+			if (e.target.classList.contains('delete-option')) {
+				const li = e.target.closest('li');
+				const modelName = li.dataset.value;
+				if (confirm(`Are you sure you want to delete the model "${modelName}"?`)) {
+					this.socket.emit('deleteModel', { modelName });
+					li.remove();
+				}
+			} else if (e.target.tagName === 'SPAN') {
+				toggle.textContent = e.target.textContent;
+				this.vectorizer.setModelName(e.target.textContent)
+				this.shadow.getElementById("start").disabled = false
+				popover.hidePopover();
+			}
+		});
+
+		addModelBtn.addEventListener('click', () => {
+			window.open('/train', '_self')
+		})
+
+
 		
 		this.vectorizer = this.shadow.getElementById("vec")
 		this.vectorizer.addEventListener("ready", () => {
@@ -137,29 +175,240 @@ export class WebcamGenerator extends HTMLElement {
 			startBtn.id = "start"
 			startBtn.classList.add("scribble")
 			startBtn.innerHTML = "START"
+			startBtn.disabled = true
 			this.shadow.getElementById("settings").appendChild(startBtn)
 			
 			startBtn.addEventListener("click", () => {
 				this.vectorizer.startProcess()
 				this.progressbar = new ProgressBar()
 				startBtn.replaceWith(this.progressbar)
+				this.shadow.getElementById("settings-edge").style.display = "none"
 			})
+
+			this.shadow.getElementById("settings").style.display = "flex"
 		})
 		this.vectorizer.addEventListener("progress", (data) => {
 			if(data.detail.percentage == 100){
-				let saveBtn = document.createElement("button")
-				saveBtn.addEventListener("click", this.downloadSVG.bind(this))
-				saveBtn.classList.add("scribble")
-				saveBtn.innerHTML = "SAVE"
-				this.progressbar.replaceWith(saveBtn)
-				
-				
-				let svg = this.vectorizer.getSVG(false)
-				svg.querySelectorAll("path").forEach( p => {
+
+				this.svg = this.vectorizer.getSVG(false)
+				this.svg.querySelectorAll("path").forEach( p => {
 					p.style.strokeDasharray = p.getTotalLength() 
 					p.style.strokeDashoffset = p.getTotalLength() 
 				})
-				this.shadow.getElementById("vec").replaceWith(svg)
+				this.shadow.getElementById("vec").replaceWith(this.svg)
+
+
+				let settingsEdge = this.shadow.getElementById("settings-edge")
+				settingsEdge.style.display = "flex"
+				settingsEdge.innerHTML = ""
+
+				// Create color pickers for stroke and shadow
+				let strokeColorPicker = document.createElement("input");
+				strokeColorPicker.type = "color";
+				strokeColorPicker.id = "stroke-color";
+				strokeColorPicker.value = sessionStorage.getItem('tinqta:strokeColor') || "black"; // Default to black
+				
+				let shadowColorPicker = document.createElement("input");
+				shadowColorPicker.type = "color";
+				shadowColorPicker.id = "shadow-color";
+				shadowColorPicker.value = sessionStorage.getItem('tinqta:shadowColor') || "teal"; // Default to white
+				
+				// Create labels for the color pickers
+				let strokeLabel = document.createElement("label");
+				strokeLabel.htmlFor = "stroke-color";
+				strokeLabel.textContent = "Stroke Color:";
+				
+				let shadowLabel = document.createElement("label");
+				shadowLabel.htmlFor = "shadow-color";
+				shadowLabel.textContent = "Shadow Color:";
+				
+				// Create containers for each color picker and its label
+				let strokeContainer = document.createElement("div");
+				strokeContainer.appendChild(strokeLabel);
+				strokeContainer.appendChild(strokeColorPicker);
+				
+				let shadowContainer = document.createElement("div");
+				shadowContainer.appendChild(shadowLabel);
+				shadowContainer.appendChild(shadowColorPicker);
+				
+				// Add the containers to the settingsEdge
+				settingsEdge.appendChild(strokeContainer);
+				settingsEdge.appendChild(shadowContainer);
+				
+				// Add event listeners to update SVG colors
+				strokeColorPicker.addEventListener("input", updateSVGColors.bind(this));
+				shadowColorPicker.addEventListener("input", updateSVGColors.bind(this));
+				
+				function updateSVGColors() {
+					sessionStorage.setItem('tinqta:strokeColor', strokeColorPicker.value);
+					sessionStorage.setItem('tinqta:shadowColor', shadowColorPicker.value);
+
+					let strokes = this.svg.querySelector("g:first-child")
+					let shadows = this.svg.querySelector("g:nth-child(2)")
+
+					strokes.querySelectorAll("path").forEach(path => {
+						path.style.stroke = strokeColorPicker.value;
+					});
+
+					shadows.querySelectorAll("path").forEach(path => {
+						path.style.stroke = shadowColorPicker.value;
+					});
+				}
+
+				// Create sliders for line thickness
+				let strokeWidthSlider = document.createElement("input");
+				strokeWidthSlider.type = "range";
+				strokeWidthSlider.id = "stroke-width";
+				strokeWidthSlider.min = "1";
+				strokeWidthSlider.max = "10";
+				strokeWidthSlider.value = sessionStorage.getItem('tinqta:strokeWidth') || "3";
+
+				let shadowWidthSlider = document.createElement("input");
+				shadowWidthSlider.type = "range";
+				shadowWidthSlider.id = "shadow-width";
+				shadowWidthSlider.min = "1";
+				shadowWidthSlider.max = "10";
+				shadowWidthSlider.value = sessionStorage.getItem('tinqta:shadowWidth') || "5";
+
+				// Create sliders for opacity
+				let strokeOpacitySlider = document.createElement("input");
+				strokeOpacitySlider.type = "range";
+				strokeOpacitySlider.id = "stroke-opacity";
+				strokeOpacitySlider.min = "0";
+				strokeOpacitySlider.max = "1";
+				strokeOpacitySlider.step = "0.1";
+				strokeOpacitySlider.value = sessionStorage.getItem('tinqta:strokeOpacity') || "1";
+
+				let shadowOpacitySlider = document.createElement("input");
+				shadowOpacitySlider.type = "range";
+				shadowOpacitySlider.id = "shadow-opacity";
+				shadowOpacitySlider.min = "0";
+				shadowOpacitySlider.max = "1";
+				shadowOpacitySlider.step = "0.1";
+				shadowOpacitySlider.value = sessionStorage.getItem('tinqta:shadowOpacity') || "0.5";
+
+				// Create slider for animation length
+				let animationLengthSlider = document.createElement("input");
+				animationLengthSlider.type = "range";
+				animationLengthSlider.id = "animation-length";
+				animationLengthSlider.min = "0";
+				animationLengthSlider.max = "20";
+				animationLengthSlider.value = sessionStorage.getItem('tinqta:animationLength') || "8";
+
+				// Create labels for the sliders
+				let strokeWidthLabel = document.createElement("label");
+				strokeWidthLabel.htmlFor = "stroke-width";
+				strokeWidthLabel.textContent = "Stroke Width:";
+
+				let shadowWidthLabel = document.createElement("label");
+				shadowWidthLabel.htmlFor = "shadow-width";
+				shadowWidthLabel.textContent = "Shadow Width:";
+
+				let strokeOpacityLabel = document.createElement("label");
+				strokeOpacityLabel.htmlFor = "stroke-opacity";
+				strokeOpacityLabel.textContent = "Stroke Opacity:";
+
+				let shadowOpacityLabel = document.createElement("label");
+				shadowOpacityLabel.htmlFor = "shadow-opacity";
+				shadowOpacityLabel.textContent = "Shadow Opacity:";
+
+				let animationLengthLabel = document.createElement("label");
+				animationLengthLabel.htmlFor = "animation-length";
+				animationLengthLabel.textContent = "Animation Length (s):";
+
+				// Create containers for each slider and its label
+				let strokeWidthContainer = document.createElement("div");
+				strokeWidthContainer.appendChild(strokeWidthLabel);
+				strokeWidthContainer.appendChild(strokeWidthSlider);
+
+				let shadowWidthContainer = document.createElement("div");
+				shadowWidthContainer.appendChild(shadowWidthLabel);
+				shadowWidthContainer.appendChild(shadowWidthSlider);
+
+				let strokeOpacityContainer = document.createElement("div");
+				strokeOpacityContainer.appendChild(strokeOpacityLabel);
+				strokeOpacityContainer.appendChild(strokeOpacitySlider);
+
+				let shadowOpacityContainer = document.createElement("div");
+				shadowOpacityContainer.appendChild(shadowOpacityLabel);
+				shadowOpacityContainer.appendChild(shadowOpacitySlider);
+
+				let animationLengthContainer = document.createElement("div");
+				animationLengthContainer.appendChild(animationLengthLabel);
+				animationLengthContainer.appendChild(animationLengthSlider);
+
+				// Add the containers to the settingsEdge
+				settingsEdge.appendChild(strokeWidthContainer);
+				settingsEdge.appendChild(shadowWidthContainer);
+				settingsEdge.appendChild(strokeOpacityContainer);
+				settingsEdge.appendChild(shadowOpacityContainer);
+				settingsEdge.appendChild(animationLengthContainer);
+
+				// Add event listeners to update SVG styles
+				[strokeWidthSlider, shadowWidthSlider, strokeOpacitySlider, shadowOpacitySlider].forEach(slider => {
+					slider.addEventListener("input", updateSVGStyles.bind(this));
+				});
+
+				//retrigger animation
+				animationLengthSlider.addEventListener("input", updateAnimation.bind(this));
+
+				function updateAnimation(){
+					sessionStorage.setItem('tinqta:animationLength', animationLengthSlider.value);
+
+					const paths = this.svg.querySelectorAll("path");
+					paths.forEach(path => {
+						path.style.animation = 'none';
+						path.offsetHeight; // Trigger reflow
+						path.style.strokeDasharray = path.getTotalLength()
+						path.style.strokeDashoffset = path.getTotalLength()
+						path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
+					});
+				}
+
+				function updateSVGStyles() {
+					// Save strokeWidthSlider value in local storage
+					sessionStorage.setItem('tinqta:strokeWidth', strokeWidthSlider.value);
+					sessionStorage.setItem('tinqta:shadowWidth', shadowWidthSlider.value);
+					sessionStorage.setItem('tinqta:strokeOpacity', strokeOpacitySlider.value);
+					sessionStorage.setItem('tinqta:shadowOpacity', shadowOpacitySlider.value);
+					
+					
+					let strokes = this.svg.querySelector("g:first-child")
+					let shadows = this.svg.querySelector("g:nth-child(2)")
+					
+					strokes.querySelectorAll("path").forEach(path => {
+						path.style.strokeWidth = strokeWidthSlider.value;
+						path.style.strokeOpacity = strokeOpacitySlider.value;
+						//path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
+						path.style.strokeLinecap = "round"
+					})
+						
+					shadows.querySelectorAll("path").forEach(path => {
+						path.style.strokeWidth = shadowWidthSlider.value;
+						path.style.strokeOpacity = shadowOpacitySlider.value;
+						//path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
+						path.style.strokeLinecap = "round"
+					})
+				}
+
+				updateSVGColors.bind(this)()
+				updateSVGStyles.bind(this)()
+				updateAnimation.bind(this)()
+
+
+				let saveBtn = document.createElement("button")
+				saveBtn.addEventListener("click", this.saveSVG.bind(this))
+				saveBtn.classList.add("scribble")
+				saveBtn.innerHTML = "SAVE"
+				this.progressbar.replaceWith(saveBtn)
+
+				let copyBtn = document.createElement("button");
+				copyBtn.addEventListener("click", this.copySVGToClipboard.bind(this));
+				copyBtn.classList.add("scribble");
+				copyBtn.innerHTML = '<span class="material-symbols-outlined">content_copy</span>';
+				saveBtn.insertAdjacentElement('afterend', copyBtn);				
+				
+				
 				
 			}else{
 				this.progressbar.setPercentage(data.detail.percentage, data.detail.label)
@@ -173,23 +422,31 @@ export class WebcamGenerator extends HTMLElement {
 		
 		this.vectorizer.edgemin = sessionStorage.getItem("tinqta:edge-min") || 20
 		this.vectorizer.edgemax = sessionStorage.getItem("tinqta:edge-max") || 50
+		this.vectorizer.edgeDetails = sessionStorage.getItem("tinqta:edge-detail") || 2
+
 		this.shadow.getElementById("edge-min").value = this.vectorizer.edgemin
 		this.shadow.getElementById("edge-max").value = this.vectorizer.edgemax
-		
+		this.shadow.getElementById("edge-detail").value = this.vectorizer.edgeDetails
+
 		 this.shadow.getElementById("edge-min").addEventListener("change", (event) => {
 			this.vectorizer.edgemin = event.target.value
+			this.vectorizer.tick()
 			sessionStorage.setItem("tinqta:edge-min", event.target.value)
 		})
 		
 		this.shadow.getElementById("edge-max").addEventListener("change", (event) => {
 			this.vectorizer.edgemax = event.target.value
+			this.vectorizer.tick()
 			sessionStorage.setItem("tinqta:edge-max", event.target.value)
 		})
 		
-		this.shadow.getElementById("model").addEventListener("change", (event) => {
-			console.log(event.target.value)
-			this.vectorizer.setModelName(event.target.value)
+		this.shadow.getElementById("edge-detail").addEventListener("change", (event) => {
+			this.vectorizer.edgeDetails = event.target.value
+			this.vectorizer.tick()
+			sessionStorage.setItem("tinqta:edge-detail", event.target.value)
 		})
+		
+		
 		
 		
 		
@@ -200,18 +457,88 @@ export class WebcamGenerator extends HTMLElement {
 		
 		
 	}
-	
-	downloadSVG(){
-		var svg = this.vectorizer.getSVG()
-		var svgBlob = new Blob([svg], {type:"image/svg+xml;charset=utf-8"});
-		var svgUrl = URL.createObjectURL(svgBlob);
-		var downloadLink = document.createElement("a");
-		downloadLink.href = svgUrl;
-		downloadLink.download = "stamp.svg";
+
+	saveSVG() {
+		// Get the SVG element from the DOM
+		
+		this.svg.querySelectorAll("path").forEach( p => {
+			p.style.strokeDasharray = 'none'
+			p.style.strokeDashoffset = 0
+		})
+		
+		// Serialize the SVG element to a string
+		const serializer = new XMLSerializer();
+		let svgString = serializer.serializeToString(this.svg);
+		
+		// Add XML declaration
+		svgString = '<?xml version="1.0" standalone="no"?>\r\n' + svgString;
+		
+		// Create a Blob with the SVG string
+		const svgBlob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
+		
+		// Create a download link
+		const downloadLink = document.createElement("a");
+		downloadLink.href = URL.createObjectURL(svgBlob);
+		downloadLink.download = "vector_image.svg";
+		
+		// Append to body, trigger click, and remove
 		document.body.appendChild(downloadLink);
 		downloadLink.click();
 		document.body.removeChild(downloadLink);
+
+		this.svg.querySelectorAll("path").forEach( p => {
+			p.style.strokeDasharray = p.getTotalLength()
+			p.style.strokeDashoffset = p.getTotalLength()
+		})
 	}
+
+	copySVGToClipboard() {
+
+
+		let animationString = `<style>
+			@keyframes dash {
+				100% { stroke-dashoffset: 0; }
+			}
+		</style>`
+		
+		// Serialize the SVG element to a string
+		const serializer = new XMLSerializer();
+		let svgString = serializer.serializeToString(this.svg);
+		
+		navigator.clipboard.writeText(animationString + svgString);
+
+		// Create a popover element for the toast
+		const toast = document.createElement('div');
+		toast.setAttribute('popover', '');
+		toast.id = 'copy-toast';
+		toast.textContent = 'SVG copied to clipboard!';
+		
+		// Style the toast
+		toast.style.cssText = `
+			background-color: #333;
+			color: #fff;
+			padding: 10px;
+			border-radius: 5px;
+			position: fixed;
+			bottom: 20px;
+			left: 50%;
+			transform: translateX(-50%);
+			z-index: 1000;
+		`;
+
+		// Append the toast to the shadow DOM
+		this.shadowRoot.appendChild(toast);
+
+		// Show the toast
+		toast.showPopover();
+
+		// Hide the toast after 3 seconds
+		setTimeout(() => {
+			toast.hidePopover();
+		}, 3000);
+	}
+	
+	
 
 }
 
