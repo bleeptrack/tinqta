@@ -92,23 +92,7 @@ export class WebcamGenerator extends HTMLElement {
 					width: 80%;
 					height: auto;
 				}
-				g:first-child path{
-					stroke: teal;
-					stroke-width: 5;
-					stroke-opacity: 0.6;
-					stroke-linecap: round;
-					animation: dash ease-in-out forwards;
-					animation-duration: 8s;
-				}
 				
-				g:nth-child(2) path{
-					stroke: teal;
-					stroke-width: 3;
-					stroke-opacity: 0.8;
-					stroke-linecap: round;
-					animation: dash ease-in-out forwards;
-					animation-duration: 8s;
-				}
 
 				.custom-dropdown{
 					display: flex;
@@ -307,7 +291,7 @@ export class WebcamGenerator extends HTMLElement {
 				let animationLengthSlider = document.createElement("input");
 				animationLengthSlider.type = "range";
 				animationLengthSlider.id = "animation-length";
-				animationLengthSlider.min = "1";
+				animationLengthSlider.min = "0";
 				animationLengthSlider.max = "20";
 				animationLengthSlider.value = sessionStorage.getItem('tinqta:animationLength') || "8";
 
@@ -361,9 +345,25 @@ export class WebcamGenerator extends HTMLElement {
 				settingsEdge.appendChild(animationLengthContainer);
 
 				// Add event listeners to update SVG styles
-				[strokeWidthSlider, shadowWidthSlider, strokeOpacitySlider, shadowOpacitySlider, animationLengthSlider].forEach(slider => {
+				[strokeWidthSlider, shadowWidthSlider, strokeOpacitySlider, shadowOpacitySlider].forEach(slider => {
 					slider.addEventListener("input", updateSVGStyles.bind(this));
 				});
+
+				//retrigger animation
+				animationLengthSlider.addEventListener("input", updateAnimation.bind(this));
+
+				function updateAnimation(){
+					sessionStorage.setItem('tinqta:animationLength', animationLengthSlider.value);
+
+					const paths = this.svg.querySelectorAll("path");
+					paths.forEach(path => {
+						path.style.animation = 'none';
+						path.offsetHeight; // Trigger reflow
+						path.style.strokeDasharray = path.getTotalLength()
+						path.style.strokeDashoffset = path.getTotalLength()
+						path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
+					});
+				}
 
 				function updateSVGStyles() {
 					// Save strokeWidthSlider value in local storage
@@ -371,7 +371,7 @@ export class WebcamGenerator extends HTMLElement {
 					sessionStorage.setItem('tinqta:shadowWidth', shadowWidthSlider.value);
 					sessionStorage.setItem('tinqta:strokeOpacity', strokeOpacitySlider.value);
 					sessionStorage.setItem('tinqta:shadowOpacity', shadowOpacitySlider.value);
-					sessionStorage.setItem('tinqta:animationLength', animationLengthSlider.value);
+					
 					
 					let strokes = this.svg.querySelector("g:first-child")
 					let shadows = this.svg.querySelector("g:nth-child(2)")
@@ -379,20 +379,21 @@ export class WebcamGenerator extends HTMLElement {
 					strokes.querySelectorAll("path").forEach(path => {
 						path.style.strokeWidth = strokeWidthSlider.value;
 						path.style.strokeOpacity = strokeOpacitySlider.value;
-						path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
+						//path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
 						path.style.strokeLinecap = "round"
 					})
 						
 					shadows.querySelectorAll("path").forEach(path => {
 						path.style.strokeWidth = shadowWidthSlider.value;
 						path.style.strokeOpacity = shadowOpacitySlider.value;
-						path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
+						//path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
 						path.style.strokeLinecap = "round"
 					})
 				}
 
 				updateSVGColors.bind(this)()
 				updateSVGStyles.bind(this)()
+				updateAnimation.bind(this)()
 
 
 				let saveBtn = document.createElement("button")
@@ -484,17 +485,57 @@ export class WebcamGenerator extends HTMLElement {
 		document.body.appendChild(downloadLink);
 		downloadLink.click();
 		document.body.removeChild(downloadLink);
+
+		this.svg.querySelectorAll("path").forEach( p => {
+			p.style.strokeDasharray = p.getTotalLength()
+			p.style.strokeDashoffset = p.getTotalLength()
+		})
 	}
 
 	copySVGToClipboard() {
-		// Get the SVG element from the DOM
-		const svgElement = this.svg;
+
+
+		let animationString = `<style>
+			@keyframes dash {
+				100% { stroke-dashoffset: 0; }
+			}
+		</style>`
 		
 		// Serialize the SVG element to a string
 		const serializer = new XMLSerializer();
-		let svgString = serializer.serializeToString(svgElement);
+		let svgString = serializer.serializeToString(this.svg);
 		
-		navigator.clipboard.writeText(svgString);
+		navigator.clipboard.writeText(animationString + svgString);
+
+		// Create a popover element for the toast
+		const toast = document.createElement('div');
+		toast.setAttribute('popover', '');
+		toast.id = 'copy-toast';
+		toast.textContent = 'SVG copied to clipboard!';
+		
+		// Style the toast
+		toast.style.cssText = `
+			background-color: #333;
+			color: #fff;
+			padding: 10px;
+			border-radius: 5px;
+			position: fixed;
+			bottom: 20px;
+			left: 50%;
+			transform: translateX(-50%);
+			z-index: 1000;
+		`;
+
+		// Append the toast to the shadow DOM
+		this.shadowRoot.appendChild(toast);
+
+		// Show the toast
+		toast.showPopover();
+
+		// Hide the toast after 3 seconds
+		setTimeout(() => {
+			toast.hidePopover();
+		}, 3000);
 	}
 	
 	
