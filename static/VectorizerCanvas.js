@@ -122,25 +122,6 @@ export class VectorizerCanvas extends HTMLElement {
 		})
 		
 		
-		/*
-		this.models = [
-
-                    "jojo",
-                    ////////"sun",
-                    "boxes",
-                    "gigswirl",
-                    "trianglestripe",
-                    "boxgroup"
-                    ////"pigtail",
-
-                ]
-		let mlName = lodash.sample(this.models)
-		*/
-		
-		
-		
-		
-		
 
 	}
 	

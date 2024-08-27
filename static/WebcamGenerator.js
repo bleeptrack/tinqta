@@ -16,12 +16,16 @@ export class WebcamGenerator extends HTMLElement {
 		})
 		this.socket.on("models", (models) => {
 			console.log("models received", models)
-			let select = this.shadow.getElementById("model")
+			let ul = this.shadow.getElementById("model-list");
+			ul.innerHTML = '';
 			for(let modelname of models){
-				let option = document.createElement("option")
-				option.value = modelname
-				option.innerHTML = modelname
-				select.appendChild(option)
+				let li = document.createElement('li');
+				li.dataset.value = modelname;
+				li.innerHTML = `
+					<span>${modelname}</span>
+					<button class="delete-option">X</button>
+				`;
+				ul.appendChild(li);
 			}
 		})
 		
@@ -117,11 +121,22 @@ export class WebcamGenerator extends HTMLElement {
 					</div>
 					<div id="settings">
 						<div>
+							<label for="edge-min">Edge Min:</label>
 							<input type="range" min="1" max="100" value="20" class="slider" id="edge-min">
+							<label for="edge-max">Edge Max:</label>
 							<input type="range" min="1" max="100" value="30" class="slider" id="edge-max">
-							<select name="model" id="model">
-								<option value="random">random</option>
-							</select>
+							<div class="custom-dropdown">
+								<button id="dropdown-toggle" class="scribble">Select Model</button>
+								<div id="dropdown-popover" popover>
+									<ul id="model-list">
+										<li data-value="random">
+											<span>random</span>
+											<button class="delete-option">X</button>
+										</li>
+									</ul>
+									<button id="add-model" class="scribble">Add Model</button>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -130,6 +145,33 @@ export class WebcamGenerator extends HTMLElement {
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
+
+		const toggle = this.shadow.getElementById('dropdown-toggle');
+		const popover = this.shadow.getElementById('dropdown-popover');
+		const modelList = this.shadow.getElementById('model-list');
+		const addModelBtn = this.shadow.getElementById('add-model');
+
+		toggle.addEventListener('click', () => popover.togglePopover());
+
+		modelList.addEventListener('click', (e) => {
+			if (e.target.classList.contains('delete-option')) {
+				const li = e.target.closest('li');
+				const modelName = li.dataset.value;
+				if (confirm(`Are you sure you want to delete the model "${modelName}"?`)) {
+					this.socket.emit('deleteModel', { modelName });
+					li.remove();
+				}
+			} else if (e.target.tagName === 'SPAN') {
+				toggle.textContent = e.target.textContent;
+				popover.hidePopover();
+			}
+		});
+
+		addModelBtn.addEventListener('click', () => {
+		const trainWindow = window.open('/train', '_self')
+		})
+
+
 		
 		this.vectorizer = this.shadow.getElementById("vec")
 		this.vectorizer.addEventListener("ready", () => {
