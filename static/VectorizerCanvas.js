@@ -30,8 +30,6 @@ export class VectorizerCanvas extends HTMLElement {
 			console.log("config received", config)
 			this.config = config
 			this.canvas.setConfig(config)
-			this.dispatchEvent(new CustomEvent("ready"));
-			
 		})
 		
 		this.socket.on('result', (data) => {
@@ -327,6 +325,7 @@ export class VectorizerCanvas extends HTMLElement {
 			//paper.view.onFrame = this.tick.bind(this)
 			this.raster = new Raster([this.vidw,this.vidh]);
 			this.tick()
+			this.dispatchEvent(new CustomEvent("ready"));
 		})
 		
 		
