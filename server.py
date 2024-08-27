@@ -288,9 +288,9 @@ def extend_pattern(data):
         emit('extention', info)
 
 
-@socketio.on('train')
-def train(data):
-    trainer.trainModel(data['name'])
+#@socketio.on('train')
+#def train(data):
+#    trainer.trainModel(data['name'])
 
 ###### ROUTES
 

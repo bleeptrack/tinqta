@@ -236,8 +236,10 @@ export class VectorizerCanvas extends HTMLElement {
 			//jsfeat.imgproc.equalize_histogram(img_u8, img_u8)
 
 
-			var r = this.edgeDetails; //5 bei zu viel gedöns?
+			var r = Number(this.edgeDetails) //5 bei zu viel gedöns?
+			console.log("edgeDetails", r)
 			var kernel_size = (r+1) << 1;
+			console.log("kernel_size", kernel_size)
 
 
 			jsfeat.imgproc.gaussian_blur(img_u8, img_u8, kernel_size, 0);
@@ -322,9 +324,9 @@ export class VectorizerCanvas extends HTMLElement {
 			
 			
 			this.shadow.getElementById("canvas-container").appendChild(this.canvas)
-			paper.view.onFrame = this.tick.bind(this)
+			//paper.view.onFrame = this.tick.bind(this)
 			this.raster = new Raster([this.vidw,this.vidh]);
-			
+			this.tick()
 		})
 		
 		

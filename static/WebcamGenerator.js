@@ -121,6 +121,8 @@ export class WebcamGenerator extends HTMLElement {
 					</div>
 					<div id="settings">
 						<div>
+						<label for="edge-detail">Edge Detail:</label>
+							<input type="range" min="1" max="8" value="2" class="slider" id="edge-detail">
 							<label for="edge-min">Edge Min:</label>
 							<input type="range" min="1" max="100" value="20" class="slider" id="edge-min">
 							<label for="edge-max">Edge Max:</label>
@@ -131,7 +133,6 @@ export class WebcamGenerator extends HTMLElement {
 									<ul id="model-list">
 										<li data-value="random">
 											<span>random</span>
-											<button class="delete-option">X</button>
 										</li>
 									</ul>
 									<button id="add-model" class="scribble">Add Model</button>
@@ -163,12 +164,13 @@ export class WebcamGenerator extends HTMLElement {
 				}
 			} else if (e.target.tagName === 'SPAN') {
 				toggle.textContent = e.target.textContent;
+				this.vectorizer.setModelName(e.target.textContent)
 				popover.hidePopover();
 			}
 		});
 
 		addModelBtn.addEventListener('click', () => {
-		const trainWindow = window.open('/train', '_self')
+			window.open('/train', '_self')
 		})
 
 
@@ -215,23 +217,31 @@ export class WebcamGenerator extends HTMLElement {
 		
 		this.vectorizer.edgemin = sessionStorage.getItem("tinqta:edge-min") || 20
 		this.vectorizer.edgemax = sessionStorage.getItem("tinqta:edge-max") || 50
+		this.vectorizer.edgeDetails = sessionStorage.getItem("tinqta:edge-detail") || 2
+
 		this.shadow.getElementById("edge-min").value = this.vectorizer.edgemin
 		this.shadow.getElementById("edge-max").value = this.vectorizer.edgemax
-		
+		this.shadow.getElementById("edge-detail").value = this.vectorizer.edgeDetails
+
 		 this.shadow.getElementById("edge-min").addEventListener("change", (event) => {
 			this.vectorizer.edgemin = event.target.value
+			this.vectorizer.tick()
 			sessionStorage.setItem("tinqta:edge-min", event.target.value)
 		})
 		
 		this.shadow.getElementById("edge-max").addEventListener("change", (event) => {
 			this.vectorizer.edgemax = event.target.value
+			this.vectorizer.tick()
 			sessionStorage.setItem("tinqta:edge-max", event.target.value)
 		})
 		
-		this.shadow.getElementById("model").addEventListener("change", (event) => {
-			console.log(event.target.value)
-			this.vectorizer.setModelName(event.target.value)
+		this.shadow.getElementById("edge-detail").addEventListener("change", (event) => {
+			this.vectorizer.edgeDetails = event.target.value
+			this.vectorizer.tick()
+			sessionStorage.setItem("tinqta:edge-detail", event.target.value)
 		})
+		
+		
 		
 		
 		
