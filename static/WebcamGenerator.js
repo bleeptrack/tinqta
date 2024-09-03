@@ -74,18 +74,21 @@ export class WebcamGenerator extends HTMLElement {
 				#settings{
 					position: absolute;
 					bottom: 0;
+					left: 0;
+					background: rgba(255,255,255,0.5);
 					width: 100%;
 					height: 20%;
 					flex-direction: column;
 					justify-content: space-evenly;
 					align-items: center;
 					display: none;
+					font-family: 'monospace';
 				}
 				#right{
 					background-color: grey;
 				}
 				progress-bar{
-					width: 100%;
+					width: 95%;
 				}
 				
 				svg{
@@ -113,6 +116,10 @@ export class WebcamGenerator extends HTMLElement {
 						<vectorizer-canvas id="vec"></vectorizer-canvas>
 					</div>
 					<div id="settings">
+						<p id="settings-description">
+							Adjust the edge detection settings to fine-tune the vectorization process. 
+							Adjust min and max thresholds to control edge sensitivity.
+						</p>
 						<div id="settings-edge">
 							<label for="edge-detail">Edge Detail:</label>
 							<input type="range" min="1" max="8" value="2" class="slider" id="edge-detail">
@@ -197,6 +204,7 @@ export class WebcamGenerator extends HTMLElement {
 				})
 				this.shadow.getElementById("vec").replaceWith(this.svg)
 
+				this.shadow.getElementById("settings-description").textContent = "Adjust colors, style and animation length. Download SVG or copy the HTML Code to your clipboard."
 
 				let settingsEdge = this.shadow.getElementById("settings-edge")
 				settingsEdge.style.display = "flex"

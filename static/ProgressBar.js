@@ -33,7 +33,7 @@ export class ProgressBar extends HTMLElement {
 			
 			<div id="bar">
 				<div id="progress" class="scribble"></div>
-				<span id="label"></span>
+				<span id="label">starting...</span>
 			</div>
 				
 		`;
