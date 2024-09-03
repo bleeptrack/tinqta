@@ -54,7 +54,9 @@ export class ProgressBar extends HTMLElement {
 	}
 	
 	setPercentage(percentage, label){
-		this.shadow.getElementById("label").innerHTML = label
+		if(label){
+			this.shadow.getElementById("label").innerHTML = label
+		}
 		for(let rule of this.shadow.styleSheets[this.shadow.styleSheets.length-1].cssRules){
 			if(rule.selectorText  == "#progress::after" ){
 				rule.style.width = `calc(${percentage}% - 1px)`
