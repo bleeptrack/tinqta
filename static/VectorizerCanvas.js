@@ -306,7 +306,41 @@ export class VectorizerCanvas extends HTMLElement {
 			imgTmp.src = event.target.result;
 		};
 		// Read the first file from the input
-		reader.readAsDataURL(e.target.files.item(0));
+		if(e.target){
+			reader.readAsDataURL(e.target.files.item(0));
+		}else{
+			console.log("no file selected", e)
+			const imgTmp = new Image();
+			imgTmp.onload = () => {
+				let scaledImg = this.scaleImageTo1080p(imgTmp)
+				removeBackground(scaledImg, bgRemoveConfig).then((blob) => {
+				// The result is a blob encoded as PNG. It can be converted to an URL to be used as HTMLImage.src
+					const url = URL.createObjectURL(blob);
+					
+					img.src = url
+					console.log(url)
+					this.video = img
+					
+				})
+			};
+			
+			// Create a canvas element to draw the video frame
+			const canvas = document.createElement('canvas');
+			const context = canvas.getContext('2d');
+
+			// Set canvas dimensions to match the video frame
+			canvas.width = this.vidw 
+			canvas.height = this.vidh 
+
+			// Draw the current video frame to the canvas
+			context.drawImage(this.video, 0, 0, canvas.width, canvas.height);
+
+			// Convert the canvas content to a data URL
+			const dataURL = canvas.toDataURL('image/png');
+
+			// Use this data URL as the source for our image
+			imgTmp.src = dataURL;
+		}
 
 		
 		
@@ -363,6 +397,7 @@ export class VectorizerCanvas extends HTMLElement {
 
 			width = Math.floor(width * scaleFactor);
 			height = Math.floor(height * scaleFactor);
+		}
 		
 			// Create a canvas to draw the scaled image
 			const canvas = document.createElement('canvas');
@@ -377,9 +412,6 @@ export class VectorizerCanvas extends HTMLElement {
 			const scaledImg = canvas.toDataURL();
 			console.log("img scaled", scaledImg)
 			return scaledImg;
-		}
-		console.log("img not scaled", width, height)
-		return img
 	}
 	
 	activateWebcam(){
@@ -393,6 +425,7 @@ export class VectorizerCanvas extends HTMLElement {
 						<div id="canvas-container"></div>
 						<video id="webcam"></video>
 						<canvas id="edge-canvas"></canvas>
+						<button id="stop-webcam" class="scribble">take photo</button>
 					`
 
 					this.video = this.shadow.getElementById("webcam")
@@ -424,6 +457,10 @@ export class VectorizerCanvas extends HTMLElement {
 						console.log(navigator.mediaDevices.getUserMedia)
 					})
 					
+					this.shadow.getElementById("stop-webcam").addEventListener("click", () => {
+						paper.view.onFrame = () => {}
+						this.activateImage(this.video)
+					})
 					
 					
 
