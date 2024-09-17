@@ -23,6 +23,9 @@ Afterwards you can start tinqta with
 tinqta is still under heavy development and will likely change a lot!
 More info on usage coming soon!
 
+## 🎨 Examples
+![examples](https://github.com/bleeptrack/tinqta/blob/main/.github/examples.png?raw=true)
+
 ## 👀 Projects using tinqta
 - [AI Doodles](https://www.youtube.com/playlist?list=PLSV1FvtNZeQF81iLqAgOjbA1cLRTSrcFl) by [bleeptrack](htttps://www.bleeptrack.de)
 - [PatternPortrait](https://bleeptrack.de/projects/patternportrait/) by [bleeptrack](htttps://www.bleeptrack.de)
