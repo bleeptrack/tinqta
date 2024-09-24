@@ -3,3 +3,4 @@ python-socketio
 flask-socketio
 torch
 torch-geometric
+pyopenssl
