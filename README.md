@@ -20,8 +20,21 @@ Afterwards you can start tinqta with
 `python server.py`
 
 ## ✏️ Usage
-tinqta is still under heavy development and will likely change a lot!
-More info on usage coming soon!
+First, choose either a photo from you PC or take a snapshot via webcam. 
+In a next, automatic step, tinqta will remove the background of your image.
+
+Adjust edge detection parameters to your taste. Less is often more :)
+Also choose a model that generates shapes for shadow areas in your image.
+
+https://github.com/user-attachments/assets/da7ac3da-4f94-469f-9a37-33c9fef7b173
+
+In a last step you can adjust colors and style of your generated image. Edges and shadow pattern lines can be adjusted separatly. Also you can set an animation length.
+Either just save your image as an .svg now or click the copy icon to save the html code to your clipboard, so you can directly paste it for example into a website.
+
+https://github.com/user-attachments/assets/cb049ab6-3524-4e81-b140-662d8207f799
+
+
+
 
 ## 🎨 Examples
 ![examples](https://github.com/bleeptrack/tinqta/blob/main/.github/examples.png?raw=true)
