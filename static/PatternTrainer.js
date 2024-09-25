@@ -118,7 +118,7 @@ export class PatternTrainer extends HTMLElement {
 
 	connectedCallback() {
 		window.downloadLines = this.saveLines.bind(this)
-		
+		this.canvas.setPlaceholder()
 	}
 	
 	saveLines(){

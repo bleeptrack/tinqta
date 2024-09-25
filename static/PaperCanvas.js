@@ -27,11 +27,24 @@ export class PaperCanvas extends HTMLElement {
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
-
+		
 
 	}
 	
+	setPlaceholder(){
+		paper.project.importSVG("/static/placeholder.svg", (svg) => {
+			svg.position = view.center
+			svg.fitBounds(paper.view.bounds)
+			svg.scale(0.9)
+			svg.strokeWidth = 2
+			this.placeholder = svg
+			paper.view.onMouseDown = (event) => {
+				this.placeholder.remove()
+				paper.view.onMouseDown = null
+			}
+		})
 
+	}
 
 	connectedCallback() {
 		paper.install(window)
