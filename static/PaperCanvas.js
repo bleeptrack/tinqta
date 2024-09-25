@@ -23,6 +23,7 @@ export class PaperCanvas extends HTMLElement {
 			
 			<canvas id="paperCanvas" resize="true"></canvas>
 			<div class="button-container">
+				<button id="downloadJSON">Download JSON</button>
 				<button id="downloadSvg">Download SVG</button>
 				<input type="file" id="uploadSvg" accept=".json" style="display: none;">
 				<label for="uploadSvg" class="upload-button">Upload SVG</label>
@@ -33,6 +34,30 @@ export class PaperCanvas extends HTMLElement {
 		this.shadow.appendChild(container.content.cloneNode(true));
 
 		this.shadow.getElementById('downloadSvg').addEventListener('click', () => {
+			// Get the SVG from Paper.js project
+			const svg = paper.project.exportSVG({ asString: true });
+
+			// Create a Blob with the SVG content
+			const blob = new Blob([svg], { type: 'image/svg+xml' });
+
+			// Create a temporary URL for the Blob
+			const url = URL.createObjectURL(blob);
+
+			// Create a temporary anchor element
+			const downloadLink = document.createElement('a');
+			downloadLink.href = url;
+			downloadLink.download = 'drawing.svg';
+
+			// Append to body, trigger click, and remove
+			document.body.appendChild(downloadLink);
+			downloadLink.click();
+			document.body.removeChild(downloadLink);
+
+			// Revoke the temporary URL
+			URL.revokeObjectURL(url);
+		})
+
+		this.shadow.getElementById('downloadJSON').addEventListener('click', () => {
 			this.exportLines();
 		})
 
