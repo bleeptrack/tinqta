@@ -71,8 +71,12 @@ export class PaperCanvas extends HTMLElement {
 		}
 
 		tool.onMouseUp = () => {
-			path.simplify()
-			this.processLine(path)
+			if(path.segments.length > 1){
+				path.simplify()
+				this.processLine(path)
+			}else{
+				path.remove()
+			}
 		}
 	}
 	
