@@ -33,6 +33,10 @@ Either just save your image as an .svg now or click the copy icon to save the ht
 
 https://github.com/user-attachments/assets/cb049ab6-3524-4e81-b140-662d8207f799
 
+(optional) In the Model selection, you can also opt to train a scribble model yourself. Just draw shapes you like on the canvas, choose a name and hit "train": in the next few minutes you can enjoy the sight of neurons fitting your lines ;)
+
+https://github.com/user-attachments/assets/efba284a-b5a5-4470-9d65-a9e1213a3b71
+
 
 
 
