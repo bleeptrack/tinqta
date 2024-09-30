@@ -130,6 +130,12 @@ export class VectorizerCanvas extends HTMLElement {
 						width: 48px;
 					}
 				}
+
+				#photo-container{
+					display: flex;
+					flex-direction: row;
+					align-items: center;
+				}
 			</style>
 			
 			
@@ -466,7 +472,10 @@ export class VectorizerCanvas extends HTMLElement {
 						<div id="canvas-container"></div>
 						<video id="webcam"></video>
 						<canvas id="edge-canvas"></canvas>
-						<button id="stop-webcam" class="scribble">take photo</button>
+						<div id="photo-container">
+							<button id="stop-webcam" class="scribble">take photo</button>
+							<button id="download-photo" class="scribble">save photo for later</button>
+						</div>
 					`
 
 					this.video = this.shadow.getElementById("webcam")
@@ -501,6 +510,26 @@ export class VectorizerCanvas extends HTMLElement {
 					this.shadow.getElementById("stop-webcam").addEventListener("click", () => {
 						paper.view.onFrame = () => {}
 						this.activateImage(this.video)
+					})
+
+					this.shadow.getElementById("download-photo").addEventListener("click", () => {
+					
+						const tempCanvas = document.createElement('canvas');
+						tempCanvas.width = this.vidw;
+						tempCanvas.height = this.vidh;
+						const tempCtx = tempCanvas.getContext('2d');
+						
+						tempCtx.drawImage(this.video, 0, 0, this.vidw, this.vidh);
+						const dataURL = tempCanvas.toDataURL('image/jpeg');
+						
+						const link = document.createElement('a');
+						link.href = dataURL;
+						const now = new Date();
+						const formattedDate = now.toISOString().replace(/:/g, '-').replace(/\..+/, '');
+						link.download = `tinqta_photo_${formattedDate}.jpg`;
+						document.body.appendChild(link);
+						link.click();
+						document.body.removeChild(link);
 					})
 					
 					
