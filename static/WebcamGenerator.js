@@ -385,8 +385,10 @@ export class WebcamGenerator extends HTMLElement {
 					let shadows = this.svg.querySelector("g:nth-child(2)")
 					
 					strokes.querySelectorAll("path").forEach(path => {
+						path.setAttribute('vector-effect', 'non-scaling-stroke');
 						path.style.strokeWidth = strokeWidthSlider.value;
 						path.style.strokeOpacity = strokeOpacitySlider.value;
+						path.style.fill = "none"
 						//path.style.animation = `dash ${animationLengthSlider.value}s ease-in-out forwards`;
 						path.style.strokeLinecap = "round"
 					})
@@ -403,12 +405,83 @@ export class WebcamGenerator extends HTMLElement {
 				updateSVGStyles.bind(this)()
 				updateAnimation.bind(this)()
 
-
 				let saveBtn = document.createElement("button")
 				saveBtn.addEventListener("click", this.saveSVG.bind(this))
 				saveBtn.classList.add("scribble")
 				saveBtn.innerHTML = "SAVE"
 				this.progressbar.replaceWith(saveBtn)
+
+				// Create file picker for SVG branding
+				let brandingPicker = document.createElement("input");
+				brandingPicker.type = "file";
+				brandingPicker.id = "branding-picker";
+				brandingPicker.accept = ".svg";
+				brandingPicker.style.display = "none";
+				let brandingLabel = document.createElement("label");
+				brandingLabel.htmlFor = "branding-picker";
+				brandingLabel.classList.add("scribble");
+				brandingLabel.innerHTML = "Choose optional branding SVG";
+
+				saveBtn.insertAdjacentElement('beforebegin', brandingPicker);	
+				saveBtn.insertAdjacentElement('beforebegin', brandingLabel);	
+
+				brandingPicker.addEventListener("change", (event) => {
+					const file = event.target.files[0];
+					if (file) {
+						const reader = new FileReader();
+						reader.onload = (e) => {
+						const brandingSVG = new DOMParser().parseFromString(e.target.result, 'image/svg+xml').documentElement;
+						console.log(brandingSVG)
+						// Get the main SVG element
+						
+						let strokes = this.svg.querySelector("g:first-child")
+						
+						// Create a new group for the branding
+						const brandingGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+						brandingGroup.setAttribute("id", "branding");
+						
+						// Append all paths from the branding SVG to the new group
+						const firstGroup = brandingSVG.querySelector('g');
+						if (firstGroup) {
+							brandingGroup.appendChild(firstGroup.cloneNode(true));
+							let sibling = firstGroup.nextElementSibling;
+							while (sibling) {
+								brandingGroup.appendChild(sibling.cloneNode(true));
+								sibling = sibling.nextElementSibling;
+							}
+						} else {
+							console.warn('No group element found in the branding SVG');
+						}
+						
+						// Append the branding group to the main SVG
+						strokes.appendChild(brandingGroup);
+						
+						// Position the branding in the bottom right corner
+						const svgBBox = this.svg.getBBox();
+						const brandingBBox = brandingGroup.getBBox();
+						console.log(brandingBBox)
+
+						let minSize = Math.min(svgBBox.width, svgBBox.height)
+						let scale = minSize * 0.3 / Math.max(brandingBBox.width, brandingBBox.height)
+						//const scale = Math.min(svgBBox.width * 0.2 / brandingBBox.width, svgBBox.height * 0.2 / brandingBBox.height);
+						//const translateX = svgBBox.width - (brandingBBox.width * scale) - 10;
+						//const translateY = svgBBox.height + 10; // Position below the SVG
+						
+						brandingGroup.setAttribute('transform', `translate(${brandingBBox.x + minSize/20 + brandingBBox.width/2}, ${brandingBBox.y + minSize/20 + brandingBBox.height/2}) scale(${scale})`);
+						
+						// Store the branding SVG for later use
+						this.vectorizer.brandingSVG = brandingGroup;
+						
+						// Update the SVG display
+						updateSVGColors.bind(this)()
+						updateSVGStyles.bind(this)()
+						updateAnimation.bind(this)()
+						};
+						reader.readAsText(file);
+					}
+				});
+
+				
 
 				let copyBtn = document.createElement("button");
 				copyBtn.addEventListener("click", this.copySVGToClipboard.bind(this));
@@ -431,6 +504,7 @@ export class WebcamGenerator extends HTMLElement {
 		this.vectorizer.edgemin = sessionStorage.getItem("tinqta:edge-min") || 20
 		this.vectorizer.edgemax = sessionStorage.getItem("tinqta:edge-max") || 50
 		this.vectorizer.edgeDetails = sessionStorage.getItem("tinqta:edge-detail") || 2
+		this.vectorizer.brandingSVG = this.shadow.getElementById("tinqta:brandingSVG") || null
 
 		this.shadow.getElementById("edge-min").value = this.vectorizer.edgemin
 		this.shadow.getElementById("edge-max").value = this.vectorizer.edgemax
