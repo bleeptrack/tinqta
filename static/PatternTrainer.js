@@ -88,6 +88,7 @@ export class PatternTrainer extends HTMLElement {
 				</div>
 				
 				<button id="train" class="scribble">train</button>
+				<button id="train-pattern" class="scribble">train pattern</button>
 			</div>
 		`;
 
@@ -111,6 +112,13 @@ export class PatternTrainer extends HTMLElement {
 			this.progressbar = new ProgressBar()
 			this.shadow.getElementById("train").replaceWith(this.progressbar)
 			
+		})
+
+		this.shadow.getElementById("train-pattern").addEventListener("click", () => {
+			this.socket.emit("train pattern", {
+				name: this.shadow.getElementById("name").innerHTML,
+				list: this.canvas.linelist,
+			})
 		})
 		
 	}

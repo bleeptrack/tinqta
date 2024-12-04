@@ -147,124 +147,37 @@ class GraphHandler:
 
 
 
-    def create_pattern_graph(self, main_id, reference_node_id, ids, latent_name):
+    def create_pattern_graph(self, pred_id, ids, latent_name):
 
         hidden_states = []
-        if not reference_node_id in ids:
-            ids = torch.cat([ torch.tensor([reference_node_id]), ids])
+        
+        x_coords = [self.raw_data[i]['points'][0]['x'] for i in ids]
+        y_coords = [self.raw_data[i]['points'][0]['y'] for i in ids]
+        center_point = [ (max(x_coords)+min(x_coords))/2, (max(y_coords)+min(y_coords))/2 ]
+
+        for i in ids:
+            hid = self.assemble_node_hidden_state(i, center_point, self.raw_data[i]['latent_vector'][latent_name])
+            hidden_states.append(hid)
+
+        if pred_id is not None:
+            ground_truth = self.assemble_node_hidden_state(pred_id, center_point, self.raw_data[pred_id]['latent_vector'][latent_name])
+        else:
+            ground_truth = None
+            print("no prediction id given. is this correct?", pred_id)
 
         #fully connect der nähesten k nodes
         connections = torch.combinations(torch.arange(0,len(ids), dtype=torch.int64))
 
-        #reference_node_id = ids[0] #die referenz node könnte auch durchiteriert werden. referenziert aktuell nur den 0,0 punkt
-
-        for i in ids:
-            hid = self.assemble_node_hidden_state(i, reference_node_id, self.raw_data[i]['latent_vector'][latent_name])
-            hidden_states.append(hid)
-
-        if main_id is not None:
-            ground_truth = self.assemble_node_hidden_state(main_id, reference_node_id, self.raw_data[main_id]['latent_vector'][latent_name])
-        else:
-            ground_truth = None
-            print("fail", main_id, reference_node_id)
-            
         edge_index = torch.tensor(connections, dtype=torch.long).t().contiguous()
         x = torch.stack(hidden_states, dim=0) #vllt nochmal checken ob der jetzt "richtig rum" ist
 
         return x, edge_index, ground_truth
-
-
-    def sample_graph(self,ref_id, latent_name, max_dist=config['max_dist']):
-        dists = self.get_distance_matrix()
-        max_dist = config['max_dist']
-        dists = dists * (dists < max_dist)
-        sorted_dists, indices = torch.sort(dists)
-
-        current = sorted_dists[ref_id]
-        current_ids = indices[ref_id]
-        not_zero = current!=0
-        current = current[not_zero]
-        ids = current_ids[not_zero]
-        
-        x, edge_index, _ = self.create_pattern_graph(None, ref_id, ids, latent_name)
-
-        return x, edge_index
     
-    def sample_complete_graph(self, latent_name):
-        samples = []
-        for i in range(len(self.raw_data)):
-            x, edge_idx = self.sample_graph(i, latent_name)
-            samples.append({ 
-                "x":x, 
-                "edge_index":edge_idx,
-                "ref_id": i
-            })
-        return samples
 
-
-    def save_pattern_training_data(self, latent_name, name):
-        data_list = []
-
-
-        max_dist = config['max_dist']
-
-        for current_dist in range(50, max_dist+1, 50): #area of lines to take into context. dropout of lines maybe better?
-            dists = self.get_distance_matrix()
-            print("processing data at max distance ", current_dist)
-
-            dists = dists * (dists < current_dist)
-            sorted_dists, indices = torch.sort(dists)
-
-
-            #for ref_id in range(len(sorted_dists)):
-            inner_ids = [i for i in range(len(sorted_dists)) if i not in self.outer_ids]
-            for ref_id in inner_ids:
-
-                current = sorted_dists[ref_id]
-                current_ids = indices[ref_id]
-
-                #remove all nodes that are too far away (have 0)
-                not_zero = current!=0
-                current = current[not_zero]
-                current_ids = current_ids[not_zero]
-                if current_ids.size()[0] == 0:
-                        continue
-
-                for l in range(1): #range(len(current_ids)):
-
-                    #get ground truth node and remove it from other ids
-                    #GT node could be different ones than only the closest?
-                    
-                    
-
-                    pred_id = current_ids[l]
-                    current_drop = torch.cat([current[0:l], current[l+1:]]) #  current[1:]
-                    current_ids_drop = torch.cat([current_ids[0:l], current_ids[l+1:]]) #current_ids[1:]
-                    
-
-                    #remove edge nodes and only take inner ids
-                    inner = torch.tensor([True if i in inner_ids else False for i in current_ids_drop])
-                    if inner.size()[0] == 0:
-                        continue
-                    current_drop = current_drop[inner]
-                    current_ids_drop = current_ids_drop[inner]
-
-                    x, edge_index, ground_truth = self.create_pattern_graph(pred_id, ref_id, current_ids_drop, latent_name)
-                    data = Data(x=x, edge_index=edge_index, y=ground_truth)
-                    data_list.append(data)
-                
-        print("saving dataset of length ", len(data_list))
-        torch.save({ 'pattern': data_list }, self.get_path_name(name, 'pattern'))
-
-
-
-    def getAbsolutePosition(reference_id):
-        return self.raw_data[reference_id]['points'][0]['x'], self.raw_data[reference_id]['points'][0]['y']
-
-    def assemble_node_hidden_state(self, current_id, reference_id, current_latent_vector):
+    def assemble_node_hidden_state(self, current_id, center_point, current_latent_vector):
         lat_vec = current_latent_vector
-        posX = self.raw_data[current_id]['points'][0]['x'] - self.raw_data[reference_id]['points'][0]['x'] #delta zur main node position
-        posY = self.raw_data[current_id]['points'][0]['y'] - self.raw_data[reference_id]['points'][0]['y']
+        posX = self.raw_data[current_id]['points'][0]['x'] - center_point[0] #delta zur main node position
+        posY = self.raw_data[current_id]['points'][0]['y'] - center_point[1]
         # versuch das relativ anzugeben im bezug zur ... maxdist?
         posX = posX / config['max_dist']
         posY = posY / config['max_dist']
@@ -274,6 +187,53 @@ class GraphHandler:
         #print(lat_vec.size(), posX, posY, rot, scale)
         
         return torch.cat( (torch.tensor( [posX, posY, rot, scale], dtype=torch.float), lat_vec), 0)
+
+
+    def sample_graph(self, pred_id, latent_name, max_dist=config['max_dist']):
+        dists = self.get_distance_matrix()
+        max_dist = config['max_dist']
+        dists = dists * (dists < max_dist)
+        sorted_dists, indices = torch.sort(dists)
+
+        current = sorted_dists[pred_id]
+        current_ids = indices[pred_id]
+        not_zero = current!=0
+        current = current[not_zero]
+        ids = current_ids[not_zero]
+        
+        x, edge_index, ground_truth = self.create_pattern_graph(pred_id, ids, latent_name)
+
+        return x, edge_index, ground_truth
+    
+    def sample_complete_graph(self, latent_name):
+        samples = []
+        for i in range(len(self.raw_data)):
+            x, edge_idx = self.sample_graph(i, latent_name)
+            samples.append({ 
+                "x":x, 
+                "edge_index":edge_idx,
+                "pred_id": i
+            })
+        return samples
+
+
+    def save_pattern_training_data(self, latent_name, name):
+        data_list = []
+
+        for i in range(len(self.raw_data)):
+            x, edge_idx, ground_truth = self.sample_graph(i, latent_name)     
+            data = Data(x=x, edge_index=edge_idx, y=ground_truth)
+            data_list.append(data)
+                
+        print("saving dataset of length ", len(data_list))
+        torch.save({ 'pattern': data_list }, self.get_path_name(name, 'pattern'))
+
+
+
+    def getAbsolutePosition(reference_id):
+        return self.raw_data[reference_id]['points'][0]['x'], self.raw_data[reference_id]['points'][0]['y']
+
+    
         
 
 

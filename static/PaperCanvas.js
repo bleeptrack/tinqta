@@ -22,12 +22,57 @@ export class PaperCanvas extends HTMLElement {
 			</style>
 			
 			<canvas id="paperCanvas" resize="true"></canvas>
-				
+			<div class="button-container">
+				<button id="downloadJSON">Download JSON</button>
+				<button id="downloadSvg">Download SVG</button>
+				<input type="file" id="uploadSvg" accept=".json" style="display: none;">
+				<label for="uploadSvg" class="upload-button">Upload SVG</label>
+			</div>
 		`;
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
 		
+
+		this.shadow.getElementById('downloadSvg').addEventListener('click', () => {
+			// Get the SVG from Paper.js project
+			const svg = paper.project.exportSVG({ asString: true });
+
+			// Create a Blob with the SVG content
+			const blob = new Blob([svg], { type: 'image/svg+xml' });
+
+			// Create a temporary URL for the Blob
+			const url = URL.createObjectURL(blob);
+
+			// Create a temporary anchor element
+			const downloadLink = document.createElement('a');
+			downloadLink.href = url;
+			downloadLink.download = 'drawing.svg';
+
+			// Append to body, trigger click, and remove
+			document.body.appendChild(downloadLink);
+			downloadLink.click();
+			document.body.removeChild(downloadLink);
+
+			// Revoke the temporary URL
+			URL.revokeObjectURL(url);
+		})
+
+		this.shadow.getElementById('downloadJSON').addEventListener('click', () => {
+			this.exportLines();
+		})
+
+		this.shadow.getElementById('uploadSvg').addEventListener('change', (event) => {
+			const file = event.target.files[0];
+			if (file) {
+				const reader = new FileReader();
+				reader.onload = (e) => {
+					const contents = e.target.result;
+					this.importLines(contents);
+				};
+				reader.readAsText(file);
+			}
+		})
 
 	}
 	
@@ -77,6 +122,44 @@ export class PaperCanvas extends HTMLElement {
 			}else{
 				path.remove()
 			}
+		}
+	}
+
+	exportLines(){
+		// Convert originalLines to JSON
+		const jsonData = JSON.stringify(this.originalLines.map(line => line.exportJSON()));
+
+		// Create a Blob with the JSON data
+		const blob = new Blob([jsonData], { type: 'application/json' });
+
+		// Create a temporary URL for the Blob
+		const url = URL.createObjectURL(blob);
+
+		// Create a temporary anchor element
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `lines.json`;
+		// Append the anchor to the body, click it, and remove it
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+
+		// Revoke the temporary URL
+		URL.revokeObjectURL(url);
+	}
+
+	importLines(data){
+		this.originalLines = JSON.parse(data).map(line => {
+			let p = new Path()
+			p.importJSON(line)
+			p.strokeColor = "black"
+			p.strokeWidth = 3
+			p.strokeCap = 'round'
+			return p
+		})
+		console.log(this.originalLines)
+		for(let line of this.originalLines){
+			//this.processLine(line)
 		}
 	}
 	
