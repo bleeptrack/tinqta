@@ -174,6 +174,7 @@ class GraphHandler:
         return x, edge_index, ground_truth
     
 
+    #center_point ist der punkt, der den referenzpunkt für das datensample darstellt
     def assemble_node_hidden_state(self, current_id, center_point, current_latent_vector):
         lat_vec = current_latent_vector
         posX = self.raw_data[current_id]['points'][0]['x'] - center_point[0] #delta zur main node position

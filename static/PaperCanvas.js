@@ -304,25 +304,42 @@ export class PaperCanvas extends HTMLElement {
 		}
 		return path
 	}	
+
+	calculateAngle(path){
+		let info = path.clone()
+		info.remove()
+		let lr = this.calculateLinearRegression(info.segments.map(seg => seg.point))
+		console.log(lr)
+		let line = new Path()
+		line.add(new Point(0, lr.predict(0)))
+		line.add(new Point(100, lr.predict(100)))
+		line.position = view.center
+		line.strokeColor = "red"
+		line.strokeWidth = 2
+
+		let angle = line.lastSegment.point.subtract(line.firstSegment.point).angle
+		//line.rotate(-angle, line.firstSegment.point)
+
+		return angle
+	}
 	
 	createSegments(path) {
 		//scale up to normalized size
+
+		let angle = this.calculateAngle(path) / 360
+		console.log("angle", angle)
+		path.rotate(-angle*360, path.firstSegment.point)
+		
+
 		let largeDir = Math.max(path.bounds.width, path.bounds.height)
 		let baseSize = this.config["stroke_normalizing_size"]
 		path.scale(baseSize/largeDir, path.firstSegment.point)
 		let scale = largeDir/baseSize
 		
-		let currAngle = path.lastSegment.point.subtract(
-			path.firstSegment.point
-		).angle + 180
-		
-		let angle = currAngle/360
-		path.rotate(-currAngle, path.firstSegment.point)
-		
-		
 		let segmentedPath = new Path()
 		
 		let dist = path.length / (this.config.nrPoints - 1)
+		
 		
 		for (let i = 0; i < this.config.nrPoints - 1; i++) {
 			let p = path.getPointAt(dist * i).round()
@@ -331,6 +348,39 @@ export class PaperCanvas extends HTMLElement {
 		segmentedPath.addSegment(path.lastSegment.point.round())
 
 		return [segmentedPath, scale, angle]
+	}
+
+	calculateLinearRegression(points) {
+		// Calculate means of x and y coordinates
+		let sumX = 0, sumY = 0;
+		points.forEach(point => {
+			sumX += point.x;
+			sumY += point.y;
+		});
+		const meanX = sumX / points.length;
+		const meanY = sumY / points.length;
+
+		// Calculate coefficients
+		let numerator = 0;
+		let denominator = 0;
+		points.forEach(point => {
+			const xDiff = point.x - meanX;
+			const yDiff = point.y - meanY;
+			numerator += xDiff * yDiff;
+			denominator += xDiff * xDiff;
+		});
+
+		// Calculate slope and y-intercept
+		const slope = denominator !== 0 ? numerator / denominator : 0;
+		const intercept = meanY - slope * meanX;
+
+		return {
+			slope: slope,
+			intercept: intercept,
+			predict: function(x) {
+				return slope * x + intercept;
+			}
+		};
 	}
 
 	segments2points(path) {
