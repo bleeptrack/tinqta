@@ -308,12 +308,13 @@ export class PaperCanvas extends HTMLElement {
 	calculateAngle(path){
 		let info = path.clone()
 		info.remove()
-		let lr = this.calculateLinearRegression(info.segments.map(seg => seg.point))
-		console.log(lr)
+		let pca = this.calculatePCA(info.segments.map(seg => seg.point))
+		//let lr = this.calculateLinearRegression(info.segments.map(seg => seg.point))
+		console.log(pca)
 		let line = new Path()
-		line.add(new Point(0, lr.predict(0)))
-		line.add(new Point(100, lr.predict(100)))
-		line.position = view.center
+		line.add(new Point(0, 0))
+		line.add(new Point(pca.eigenvectors[0].x*200, pca.eigenvectors[0].y*200))
+		line.position = pca.center
 		line.strokeColor = "red"
 		line.strokeWidth = 2
 
@@ -350,36 +351,58 @@ export class PaperCanvas extends HTMLElement {
 		return [segmentedPath, scale, angle]
 	}
 
-	calculateLinearRegression(points) {
-		// Calculate means of x and y coordinates
-		let sumX = 0, sumY = 0;
-		points.forEach(point => {
-			sumX += point.x;
-			sumY += point.y;
-		});
-		const meanX = sumX / points.length;
-		const meanY = sumY / points.length;
+	calculatePCA(points) {
+		// Center the data by subtracting means
+		const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+		const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+		
+		const centeredPoints = points.map(p => ({
+			x: p.x - meanX,
+			y: p.y - meanY
+		}));
 
-		// Calculate coefficients
-		let numerator = 0;
-		let denominator = 0;
-		points.forEach(point => {
-			const xDiff = point.x - meanX;
-			const yDiff = point.y - meanY;
-			numerator += xDiff * yDiff;
-			denominator += xDiff * xDiff;
+		// Calculate covariance matrix
+		let xx = 0, xy = 0, yy = 0;
+		centeredPoints.forEach(p => {
+			xx += p.x * p.x;
+			xy += p.x * p.y;
+			yy += p.y * p.y;
 		});
+		xx /= points.length;
+		xy /= points.length;
+		yy /= points.length;
 
-		// Calculate slope and y-intercept
-		const slope = denominator !== 0 ? numerator / denominator : 0;
-		const intercept = meanY - slope * meanX;
+		// Calculate eigenvalues and eigenvectors
+		const trace = xx + yy;
+		const det = xx * yy - xy * xy;
+		const lambda1 = (trace + Math.sqrt(trace * trace - 4 * det)) / 2;
+		const lambda2 = (trace - Math.sqrt(trace * trace - 4 * det)) / 2;
+		
+		// Calculate principal components (eigenvectors)
+		let pc1, pc2;
+		if (Math.abs(xy) < 1e-10) {
+			pc1 = xx > yy ? {x: 1, y: 0} : {x: 0, y: 1};
+			pc2 = xx > yy ? {x: 0, y: 1} : {x: 1, y: 0};
+		} else {
+			pc1 = {
+				x: lambda1 - yy,
+				y: xy
+			};
+			pc2 = {
+				x: lambda2 - yy,
+				y: xy
+			};
+			// Normalize vectors
+			const mag1 = Math.sqrt(pc1.x * pc1.x + pc1.y * pc1.y);
+			const mag2 = Math.sqrt(pc2.x * pc2.x + pc2.y * pc2.y);
+			pc1 = {x: pc1.x/mag1, y: pc1.y/mag1};
+			pc2 = {x: pc2.x/mag2, y: pc2.y/mag2};
+		}
 
 		return {
-			slope: slope,
-			intercept: intercept,
-			predict: function(x) {
-				return slope * x + intercept;
-			}
+			eigenvalues: [lambda1, lambda2],
+			eigenvectors: [pc1, pc2],
+			center: {x: meanX, y: meanY}
 		};
 	}
 
