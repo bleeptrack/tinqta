@@ -149,7 +149,8 @@ export class PaperCanvas extends HTMLElement {
 	}
 
 	importLines(data){
-		this.originalLines = JSON.parse(data).map(line => {
+		this.placeholder.remove()
+		let importedLines = JSON.parse(data).map(line => {
 			let p = new Path()
 			p.importJSON(line)
 			p.strokeColor = "black"
@@ -157,9 +158,9 @@ export class PaperCanvas extends HTMLElement {
 			p.strokeCap = 'round'
 			return p
 		})
-		console.log(this.originalLines)
-		for(let line of this.originalLines){
-			//this.processLine(line)
+		console.log(importedLines)
+		for(let line of importedLines){
+			this.processLine(line)
 		}
 	}
 	
@@ -309,7 +310,8 @@ export class PaperCanvas extends HTMLElement {
 		let info = path.clone()
 		info.remove()
 		let pca = this.calculatePCA(info.segments.map(seg => seg.point))
-		//let lr = this.calculateLinearRegression(info.segments.map(seg => seg.point))
+		
+		
 		console.log(pca)
 		let line = new Path()
 		line.add(new Point(0, 0))
@@ -317,10 +319,11 @@ export class PaperCanvas extends HTMLElement {
 		line.position = pca.center
 		line.strokeColor = "red"
 		line.strokeWidth = 2
+		
 
 		let angle = line.lastSegment.point.subtract(line.firstSegment.point).angle
 		//line.rotate(-angle, line.firstSegment.point)
-
+		line.remove()
 		return angle
 	}
 	
