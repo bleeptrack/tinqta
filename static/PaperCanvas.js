@@ -149,7 +149,7 @@ export class PaperCanvas extends HTMLElement {
 	}
 
 	importLines(data){
-		this.placeholder.remove()
+		this.placeholder?.remove()
 		let importedLines = JSON.parse(data).map(line => {
 			let p = new Path()
 			p.importJSON(line)

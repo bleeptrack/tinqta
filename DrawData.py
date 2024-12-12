@@ -83,6 +83,7 @@ class GraphHandler:
 
     def add_line_latentspace(self,lineTrainer):
         name = lineTrainer.name
+        print(self.raw_data)
         for line in self.raw_data:
             x, edge_index = self.create_line_graph(line['points'])
             z = lineTrainer.encodeLineVector(x, edge_index)
@@ -148,11 +149,12 @@ class GraphHandler:
 
 
     def create_pattern_graph(self, pred_id, ids, latent_name):
-
+        print("create pattern graph - ", pred_id, "on", ids)
         hidden_states = []
         
         x_coords = [self.raw_data[i]['points'][0]['x'] for i in ids]
         y_coords = [self.raw_data[i]['points'][0]['y'] for i in ids]
+        print(x_coords, y_coords)
         center_point = [ (max(x_coords)+min(x_coords))/2, (max(y_coords)+min(y_coords))/2 ]
 
         for i in ids:

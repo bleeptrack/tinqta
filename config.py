@@ -5,7 +5,7 @@ config = {
     'latent_size': 10,
     'stroke_normalizing_size': 100,
     'batch_size': 500,
-    'max_dist' : 100,
+    'max_dist' : 300,
     'node_dropout': 0
     }
 

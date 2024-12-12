@@ -203,7 +203,11 @@ def compare(data):
 def new_pattern(data):
     print("hallo", data)
     lineTrainer = LineTrainer(data['name'])
+    gh.add_raw(data)
+        
+    #latentspace auf den gleichen datensatz setzen
     gh.add_line_latentspace(lineTrainer)
+   
     gh.save_pattern_training_data(data['name'], data['name'])
 
     #todo training hier ist broken ||||| ist das so?

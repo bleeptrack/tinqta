@@ -21,6 +21,7 @@ export class PatternTrainer extends HTMLElement {
 		})
 		
 		this.socket.on("progress", (text) => {
+			this.canvas.placeholder.remove()
 			console.log("progress received", text)
 			if(text.lines){				
 				this.canvas.trainingEpoch(text)
@@ -30,6 +31,20 @@ export class PatternTrainer extends HTMLElement {
 				this.progressbar.setPercentage(Number(text.percent), text.label)
 			}
 		})
+
+		this.socket.on('result', (data) => {
+			console.log(data)
+			for(let idx in data.list){
+				let drawnLine = this.canvas.drawLine(data.list[idx], "black")
+				drawnLine.scale(data.scales[idx])
+				drawnLine.rotate(data.rotations[idx]*360)
+			}
+		});
+
+		this.socket.on('prediction', (data) => {
+			console.log(data)
+			
+		});
 		
 		
 
@@ -88,6 +103,8 @@ export class PatternTrainer extends HTMLElement {
 				</div>
 				
 				<button id="train" class="scribble">train</button>
+				<button id="test-lines" class="scribble">test lines</button>
+				<button id="pattern-sample" class="scribble">get pattern sample</button>
 				<button id="train-pattern" class="scribble">train pattern</button>
 			</div>
 		`;
@@ -120,13 +137,21 @@ export class PatternTrainer extends HTMLElement {
 				list: this.canvas.linelist,
 			})
 		})
+
+		this.shadow.getElementById("test-lines").addEventListener("click", () => {
+			this.socket.emit('generate', {nr: 200, name:this.shadow.getElementById("name").innerHTML})
+		})
+
+		this.shadow.getElementById("pattern-sample").addEventListener("click", () => {
+			this.socket.emit('generate pattern', {name:this.shadow.getElementById("name").innerHTML})
+		})
 		
 	}
 
 
 	connectedCallback() {
 		window.downloadLines = this.saveLines.bind(this)
-		this.canvas.setPlaceholder()
+		//this.canvas.setPlaceholder()
 	}
 	
 	saveLines(){
