@@ -43,7 +43,12 @@ export class PatternTrainer extends HTMLElement {
 
 		this.socket.on('prediction', (data) => {
 			console.log(data)
-			
+			this.canvas.clear()
+			for(let line of data["base_list"]){
+				this.canvas.drawLine(line, "black")
+			}
+			this.canvas.drawLine(data["ground_truth"], "red")
+			this.canvas.drawLine(data["prediction"], "blue")
 		});
 		
 		

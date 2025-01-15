@@ -75,6 +75,10 @@ export class PaperCanvas extends HTMLElement {
 		})
 
 	}
+
+	clear(){
+		paper.project.activeLayer.removeChildren()
+	}
 	
 	setPlaceholder(){
 		paper.project.importSVG("/static/placeholder.svg", (svg) => {
