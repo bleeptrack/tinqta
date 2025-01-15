@@ -243,6 +243,11 @@ export class VectorizerCanvas extends HTMLElement {
 						this.shadow.getElementById("edge-canvas").style.visibility = "hidden"
 						paper.project.clear()
 						paper.project.importJSON(event.data.svg)
+						this.addBrandingText()
+						
+
+						
+						
 						
 						
 						this.canvas.createMatchingLines()
@@ -309,6 +314,59 @@ export class VectorizerCanvas extends HTMLElement {
 
 
 		}
+	}
+
+	addBrandingText(){
+
+		let l3 = new Layer()
+		l3.activate()
+		l3.name = "refborder"
+		project.layers[1].name = "pattern"
+		project.layers[0].name = "lines"
+		let boundSize = Math.max(project.layers[0].bounds.width, project.layers[0].bounds.height)
+		let r = new Rectangle([project.layers[0].bounds.x, project.layers[0].bounds.y], [boundSize, boundSize])
+		r.center = project.layers[0].bounds.center
+
+		let rc = new Path.Rectangle(r)
+		rc.strokeColor = "red"
+		rc.strokeWidth = 3
+		rc.scale(1.2)
+		
+		let point = rc.bounds.bottomLeft
+		let width = rc.bounds.width
+
+		project.layers[1].activate()
+
+
+		let svgText = `<svg width="40.267498mm" height="3.625478mm" viewBox="0 0 40.267498 3.625478" version="1.1" id="svg5" sodipodi:docname="swrtext.svg" inkscape:version="1.2.2 (b0a8486541, 2022-12-01)" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+			<sodipodi:namedview id="namedview7" pagecolor="#ffffff" bordercolor="#666666" borderopacity="1.0" inkscape:showpageshadow="2" inkscape:pageopacity="0.0" inkscape:pagecheckerboard="0" inkscape:deskcolor="#d1d1d1" inkscape:document-units="mm" showgrid="false" inkscape:zoom="1.1893044" inkscape:cx="27.326898" inkscape:cy="-49.188416" inkscape:window-width="1920" inkscape:window-height="1170" inkscape:window-x="0" inkscape:window-y="0" inkscape:window-maximized="1" inkscape:current-layer="layer1" />
+			<defs id="defs2" />
+			<g inkscape:label="Layer 1" inkscape:groupmode="layer" id="layer1" transform="translate(-95.2474,-89.75852)">
+				<g inkscape:label="Hershey Text" style="fill:none;stroke:black;stroke-linecap:round;stroke-linejoin:round" id="g508" transform="translate(89.338539,9.4327391)">
+				<g transform="translate(5.08,83.82)" id="g506">
+					<path d="m 630,567 -63,63 -95,32 H 346 l -94,-32 -63,-63 v -63 l 31,-63 32,-31 63,-32 189,-63 63,-31 31,-32 32,-63 V 94.5 L 567,31.5 472,0 H 346 l -94,31.5 -63,63" style="stroke-width:0.5383in" transform="scale(0.00508,-0.00508)" id="path484" />
+					<path d="M 158,662 315,0 M 472,662 315,0 M 472,662 630,0 M 788,662 630,0" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,3.2004,0)" id="path486" />
+					<path d="M 220,662 V 0 m 0,662 h 284 l 94,-32 32,-32 32,-62 V 472 L 630,410 598,378 504,346 H 220 M 441,346 662,0" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,7.04088,0)" id="path488" />
+					<path d="M 189,662 630,0 M 630,662 189,0" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,12.3241,0)" id="path490" />
+					<path d="M 220,662 V 0 m 0,0 h 378" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,17.4447,0)" id="path492" />
+					<path d="M 567,441 V 0 m 0,346 -63,64 -63,31 H 346 L 284,410 220,346 189,252 V 189 L 220,94.5 284,31.5 346,0 h 95 l 63,31.5 63,63" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,20.1676,0)" id="path494" />
+					<path d="M 220,662 V 0 m 0,346 64,64 62,31 h 95 l 63,-31 63,-64 31,-94 V 189 L 567,94.5 504,31.5 441,0 h -95 l -62,31.5 -64,63" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,23.2054,0)" id="path496" />
+					<path d="m 220,504 v 32 l 32,62 32,32 62,32 h 126 l 64,-32 31,-32 31,-62 V 472 L 567,410 504,315 189,0 h 441" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,28.1635,0)" id="path498" />
+					<path d="M 378,662 284,630 220,536 189,378 V 284 L 220,126 284,31.5 378,0 h 63 l 95,31.5 62,94.5 32,158 v 94 l -32,158 -62,94 -95,32 h -63" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,31.3639,0)" id="path500" />
+					<path d="m 220,504 v 32 l 32,62 32,32 62,32 h 126 l 64,-32 31,-32 31,-62 V 472 L 567,410 504,315 189,0 h 441" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,34.5643,0)" id="path502" />
+					<path d="M 567,662 H 252 l -32,-284 32,32 94,31 h 95 l 95,-31 62,-64 32,-94 V 189 L 598,94.5 536,31.5 441,0 H 346 L 252,31.5 220,63 189,126" style="stroke-width:0.5383in" transform="matrix(0.00508,0,0,-0.00508,37.7647,0)" id="path504" />
+				</g>
+				</g>
+			</g>
+			</svg>`
+
+		let text = paper.project.importSVG(svgText)
+		let targetSize = width/3
+		text.scale(targetSize/text.bounds.width)
+		text.bounds.bottomLeft = point
+		text.translate(new Point(text.bounds.height, -text.bounds.height))
+
+		
 	}
 	
 
