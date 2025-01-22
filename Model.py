@@ -276,7 +276,7 @@ class LineTrainer():
         criterionMSE = torch.nn.MSELoss()
         lossMSE = criterionMSE(out, target)
 
-        beta_norm = 0.01 #(1000 * config['latent_size']) / (config["nrPoints"]*2)
+        beta_norm = 1 #0.01 #(1000 * config['latent_size']) / (config["nrPoints"]*2)
         kl_annealing = self.kl_annealing #0.001
         kl_weight = max(0, min( (epoch - self.epoch_training_offset) * kl_annealing, 1 ) )
 
@@ -440,9 +440,12 @@ class LineTrainer():
 
         for i in range(nr):
             if faktor is 'random':
-                lines.append(self.model.decode(self.randomLatentVector()))
+                z = self.randomLatentVector()
+               
+                print("random", z)
+                lines.append(self.model.decode(z))
                 scales.append(1)
-                rotations.append(random.random())
+                rotations.append(0)
             else:
                 datanum = random.randint(0,self.dataset.len()-1)
 
@@ -450,6 +453,7 @@ class LineTrainer():
 
                 mu1, logvar1 = self.model.encode(self.dataset[datanum].x, self.dataset[datanum].edge_index)
                 z1 = self.reparameterize(mu1, logvar1)
+                print("encoded", z1)
 
                 datanum2 = random.randint(0,self.dataset.len()-1)
                 mu2, logvar2 = self.model.encode(self.dataset[datanum2].x, self.dataset[datanum2].edge_index)
@@ -476,37 +480,17 @@ class LineTrainer():
 
         return lines, scales, rotations
 
-
-    def generateFlower(self, nr):
-        self.model.eval()
-
-        lines = []
-
-
-
-        #num1 = random.randint(0,self.dataset.len()-1)
-        #num2 = random.randint(0,self.dataset.len()-1)
-        #z1 = self.encodeLineVector(self.dataset[num1].x, self.dataset[num1].edge_index)
-        #z2 = self.encodeLineVector(self.dataset[num2].x, self.dataset[num2].edge_index)
-
-        z1 = self.randomLatentVector()
-        z2 = self.randomLatentVector()
-
-        z_dir = torch.subtract(z2,z1)
-        z_step = torch.divide(z_dir, nr)
-
-        for i in range(nr):
-            z_fin = torch.add(z1, torch.multiply(z_step, i))
-            lines.append(self.model.decode(z_fin))
-
-        return lines
-
     def randomLatentVector(self):
 
         z = torch.randn(config['latent_size'])
 
         #z = z.to(current_device)
         return z
+    
+    def randomInitPoint(self):
+        z = torch.randn(config['latent_size'])
+        extra = torch.rand(4)
+        return torch.cat( (z, extra), 0)
     
     def getClosestMatch(self, z):
         latentvectors, _ = self.extractOriginLineVectors()

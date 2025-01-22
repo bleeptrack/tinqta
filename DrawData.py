@@ -151,6 +151,10 @@ class GraphHandler:
     def create_pattern_graph(self, pred_id, ids, latent_name):
         print("create pattern graph - ", pred_id, "on", ids)
         hidden_states = []
+
+        if pred_id in ids:
+            ids.remove(pred_id)
+            print("removed prediction id from ids")
         
         x_coords = [self.raw_data[i]['points'][0]['x'] for i in ids]
         y_coords = [self.raw_data[i]['points'][0]['y'] for i in ids]

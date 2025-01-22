@@ -136,20 +136,19 @@ def getModels():
 def generate(data):
     print(data)
     print("RAW", gh.raw_data)
-    
-    if data['name'] == "random":
-        print("choosing RANDOM model")
-        trainer = LineTrainer(random.choice(getModels()))
-    else:
-        trainer = LineTrainer(data['name'])
+    lineTrainer = LineTrainer(data['name'])
 
-    tensors, scales, rotations = trainer.generate(data['nr'], 0.5)
+    tensors, scales, rotations = lineTrainer.generate(10, 0)
+    tensors2, scales2, rotations2 = lineTrainer.generate(10, 'random')
+    
     pointlist = []
 
     for tensor in tensors:
         pointlist.append(tensor2Points(tensor))
+    for tensor in tensors2:
+        pointlist.append(tensor2Points(tensor))
 
-    emit('result', {'list': pointlist, 'scales':scales, 'rotations':rotations})
+    emit('result', {'list': pointlist, 'scales':scales+scales2, 'rotations':rotations+rotations2})
     
 @socketio.on('convertToLatentspace')
 def convertToLatentspace(data):
@@ -215,8 +214,40 @@ def new_pattern(data):
     pt.trainModel()
 
 
-@socketio.on('generate pattern')
-def generate_pattern(data):
+# @socketio.on('sample pattern')
+# def sample_pattern(data):
+#     pt = PatternTrainer(data['name'])
+#     lineTrainer = LineTrainer(data['name'])
+
+#     #bisherige linien in den graphhandler laden
+#     gh.add_raw(data)
+        
+#     #latentspace auf den gleichen datensatz setzen
+#     gh.add_line_latentspace(lineTrainer)
+        
+#     #alle linien abgehen, als referenz nehmen und prediction einsammeln
+#     samples = gh.sample_complete_graph(data['name'])
+#     predictions = []
+#     info = {}
+#     for sample in samples:
+#         x = sample["x"]
+#         edge_index = sample["edge_index"]
+#         ref_id = sample["ref_id"]
+#         z = pt.predict(x, edge_index)
+#         pred = GraphHandler.decompose_node_hidden_state(z)
+#         predictions.append( prediction2obj(pred, lineTrainer, ref_id) )
+        
+        
+#     info["prediction"] = predictions
+#     emit('extention', info)
+
+
+
+
+
+
+@socketio.on('sample pattern')
+def sample_pattern(data):
 
     pt = PatternTrainer(data['name'])
     lineTrainer = LineTrainer(data['name'])
@@ -235,6 +266,18 @@ def generate_pattern(data):
     info["base_list"] = base_list
 
     emit('prediction', info)
+
+
+@socketio.on('generate pattern')
+def generate_pattern(data):
+    pt = PatternTrainer(data['name'])
+    lineTrainer = LineTrainer(data['name'])
+
+    z = lineTrainer.randomInitPoint()
+    line = GraphHandler.decompose_node_hidden_state(z)
+
+    emit('prediction', {'prediction': prediction2obj(line, lineTrainer)})
+
 
 @socketio.on('extend pattern')
 def extend_pattern(data):
