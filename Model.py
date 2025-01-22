@@ -266,7 +266,7 @@ class LineTrainer():
         ##self.scheduler = ReduceLROnPlateau(self.optimizer, patience=60, cooldown=20)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0005)
         
-        self.epoch_training_offset = 200
+        self.epoch_training_offset = 1000 #200
         self.kl_annealing = 0.001
        
         #lr war mal 0.1. 0.001 war jetzt besser
@@ -489,8 +489,8 @@ class LineTrainer():
     
     def randomInitPoint(self):
         z = torch.randn(config['latent_size'])
-        extra = torch.rand(4)
-        return torch.cat( (z, extra), 0)
+        pos = torch.rand(4)
+        return torch.cat( (pos, z), 0)
     
     def getClosestMatch(self, z):
         latentvectors, _ = self.extractOriginLineVectors()
@@ -615,6 +615,7 @@ class PatternTrainer():
         posLoss = torch.nn.MSELoss(reduction='mean')(resPos, testPos)
         vecLoss = torch.nn.MSELoss(reduction='mean')(resVec, testVec)
        
+        #ToDo: die gewichtung hier ist zufällig, finde eine bessere
         return posLoss*50 + vecLoss
     
     def getDatasetSample(self):
