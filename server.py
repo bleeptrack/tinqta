@@ -138,7 +138,7 @@ def generate(data):
     print("RAW", gh.raw_data)
     lineTrainer = LineTrainer(data['name'])
 
-    tensors, scales, rotations = lineTrainer.generate(10, 0)
+    tensors, scales, rotations = lineTrainer.generate(10, 'random')
     tensors2, scales2, rotations2 = lineTrainer.generate(10, 'random')
     
     pointlist = []
@@ -272,11 +272,14 @@ def sample_pattern(data):
 def generate_pattern(data):
     pt = PatternTrainer(data['name'])
     lineTrainer = LineTrainer(data['name'])
+    lines = []
 
-    z = lineTrainer.randomInitPoint()
-    line = GraphHandler.decompose_node_hidden_state(z)
-
-    emit('prediction', {'prediction': prediction2obj(line, lineTrainer)})
+    for i in range(10):
+        z = lineTrainer.randomInitPoint()
+        line = GraphHandler.decompose_node_hidden_state(z)
+        lines.append(prediction2obj(line, lineTrainer))
+        
+    emit('prediction', {'base_list': lines})
 
 
 @socketio.on('extend pattern')
