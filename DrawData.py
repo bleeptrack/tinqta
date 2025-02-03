@@ -75,46 +75,40 @@ class GraphHandler:
     def add_lines(self, data):
         for line in data:
             position = line['position'] if 'position' in line else None
-            latent_vector = line['latent_vector'] if 'latent_vector' in line else None
-            latent_name = line['latent_name'] if 'latent_name' in line else None
-            self.lines.append(Line(line['points'], line['scale'], line['rotation'], position=position, latent_vector=latent_vector, latent_name=latent_name))
+            self.lines.append(Line(line['points'], line['scale'], line['rotation'], position=position))
 
 
-    ###
+    
     def init_random(self, num_samples, lineTrainer):
         #self.raw_data = []
         
         for i in range(num_samples):
             z = lineTrainer.randomInitPoint()
-            line = GraphHandler.decompose_node_hidden_state(z)
-            print(line)
-            lineObj = GraphHandler.prediction2obj(line, lineTrainer)
-            print(lineObj)
-            self.raw_data.append(lineObj)
+            line = GraphHandler.decompose_node_hidden_state(z, lineTrainer)
+            line.position_type = "absolute"
+            line.position['x'] *= config['max_dist']
+            line.position['y'] *= config['max_dist']
+            self.lines.append(line)
             #lines.append(prediction2obj(line, lineTrainer))
 
     
             
 
-    ###
+    
     def get_path_name(self, name, type_name):
         return osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', name +'-'+ type_name +'.pt')
 
 
-    ###
+    
     def add_line_latentspace(self,lineTrainer):
         name = lineTrainer.name
-        print(self.raw_data)
-        for line in self.raw_data:
-            x, edge_index = self.create_line_graph(line['points'])
+        
+        for line in self.lines:
+            x, edge_index = line.create_line_graph()
             z = lineTrainer.encodeLineVector(x, edge_index)
-            if 'latent_vector' not in line.keys():
-                line['latent_vector'] = {}
-            if name not in line['latent_vector']:
-                line['latent_vector'][name] = z
-                print("added latent space vectors to Graph Handler")
+            line.add_latent_vector(z, name)
 
-        print("known lines:", len(self.raw_data))
+        print("known lines:", len(self.lines))
         
     #def add_line_drawdata(self, data, lineTrainer):
     #    name = lineTrainer.name
@@ -148,7 +142,7 @@ class GraphHandler:
 
 
 
-    ### 
+    
     def create_pattern_graph(self, pred_id, ids, latent_name):
         print("create pattern graph - ", pred_id, "on", ids)
         hidden_states = []
@@ -157,20 +151,23 @@ class GraphHandler:
             ids.remove(pred_id)
             print("removed prediction id from ids")
         
-        x_coords = [self.raw_data[i]['points'][0]['x'] for i in ids]
-        y_coords = [self.raw_data[i]['points'][0]['y'] for i in ids]
-        print(x_coords, y_coords)
-        center_point = [ (max(x_coords)+min(x_coords))/2, (max(y_coords)+min(y_coords))/2 ]
+        x_max_coord = max([self.lines[i].get_absoulte_maxX() for i in ids])
+        x_min_coord = min([self.lines[i].get_absoulte_minX() for i in ids])
+        y_max_coord = max([self.lines[i].get_absoulte_maxY() for i in ids])
+        y_min_coord = min([self.lines[i].get_absoulte_minY() for i in ids])
+        print(f"center: ({x_min_coord}, {y_min_coord}), ({x_max_coord}, {y_max_coord})")
+        center_point = [ (x_max_coord+x_min_coord)/2, (y_max_coord+y_min_coord)/2 ]
+        
 
         for i in ids:
-            hid = self.assemble_node_hidden_state(i, center_point, self.raw_data[i]['latent_vector'][latent_name])
+            hid = self.assemble_node_hidden_state(i, center_point, latent_name)
             hidden_states.append(hid)
 
         if pred_id is not None:
-            ground_truth = self.assemble_node_hidden_state(pred_id, center_point, self.raw_data[pred_id]['latent_vector'][latent_name])
+            ground_truth = self.assemble_node_hidden_state(pred_id, center_point, latent_name)
         else:
             ground_truth = None
-            print("no prediction id given. is this correct?", pred_id)
+            raise ValueError("no prediction id given. is this correct?", pred_id)
 
         #fully connect der nähesten k nodes
         connections = torch.combinations(torch.arange(0,len(ids), dtype=torch.int64))
@@ -181,24 +178,32 @@ class GraphHandler:
         return x, edge_index, ground_truth
     
 
-    ###
+    
     #center_point ist der punkt, der den referenzpunkt für das datensample darstellt
-    def assemble_node_hidden_state(self, current_id, center_point, current_latent_vector):
-        lat_vec = current_latent_vector
-        posX = self.raw_data[current_id]['points'][0]['x'] - center_point[0] #delta zur main node position
-        posY = self.raw_data[current_id]['points'][0]['y'] - center_point[1]
-        # versuch das relativ anzugeben im bezug zur ... maxdist?
-        posX = posX / config['max_dist']
-        posY = posY / config['max_dist']
+    def assemble_node_hidden_state(self, current_id, center_point, latent_name):
+
+        line = self.lines[current_id]
         
-        rot = self.raw_data[current_id]['rotation']
-        scale = self.raw_data[current_id]['scale']
+        lat_vec = line.latent_vectors[latent_name]
+
+        if line.position_type == "absolute":
+            delta_posX = line.position['x'] - center_point[0] #delta zur main node position
+            delta_posY = line.position['y'] - center_point[1]
+        else:
+            raise ValueError("Relative position in line while assembling node hidden state")
+
+        # versuch das relativ anzugeben im bezug zur ... maxdist?
+        delta_posX = delta_posX / config['max_dist']
+        delta_posY = delta_posY / config['max_dist']
+        
+        rot = line.rotation
+        scale = line.scale
         #print(lat_vec.size(), posX, posY, rot, scale)
         
-        return torch.cat( (torch.tensor( [posX, posY, rot, scale], dtype=torch.float), lat_vec), 0)
+        return torch.cat( (torch.tensor( [delta_posX, delta_posY, rot, scale], dtype=torch.float), lat_vec), 0)
 
 
-    ###
+    
     def sample_graph(self, pred_id, latent_name, max_dist=config['max_dist']):
         dists = self.get_distance_matrix()
         max_dist = config['max_dist']
@@ -229,11 +234,13 @@ class GraphHandler:
         return samples
 
 
-    ###
-    def save_pattern_training_data(self, latent_name, name):
+    
+    def save_pattern_training_data(self, latent_name, name=None):
         data_list = []
+        if name is None:
+            name = latent_name
 
-        for i in range(len(self.raw_data)):
+        for i in range(len(self.lines)):
             x, edge_idx, ground_truth = self.sample_graph(i, latent_name)     
             data = Data(x=x, edge_index=edge_idx, y=ground_truth)
             data_list.append(data)
@@ -242,17 +249,18 @@ class GraphHandler:
         torch.save({ 'pattern': data_list }, self.get_path_name(name, 'pattern'))
 
 
-    ###
-    def getAbsolutePosition(reference_id):
-        return self.raw_data[reference_id]['points'][0]['x'], self.raw_data[reference_id]['points'][0]['y']
 
 
-    ###
+
+    
     def get_distance_matrix(self):
 
         dist_list = []
-        for line1 in self.raw_data:
-            dist_list.append( [ line1['points'][0]['x'], line1['points'][0]['y'] ] )
+        for line1 in self.lines:
+            if line1.position_type == "absolute":
+                dist_list.append( [ line1.position['x'], line1.position['y'] ] )
+            else:
+                raise ValueError("prediction with relative position in lines")
 
         dist_tensor = torch.tensor(dist_list).float()
         return torch.cdist(dist_tensor, dist_tensor, p=2)
@@ -260,37 +268,20 @@ class GraphHandler:
 
 
     
-    ###
+    
     @staticmethod
-    def decompose_node_hidden_state(z):
-        info = {
-            "posX" : z[0].item(),
-            "posY" : z[1].item(),
-            "rot" : z[2].item(),
-            "scale" : z[3].item(),
-            "latVec" : z[4:]
-        }
-        
-        return info
+    def decompose_node_hidden_state(z, line_trainer):
+        posX = z[0].item()
+        posY = z[1].item()
+        rot = z[2].item()
+        scale = z[3].item()
+        latVec = z[4:]
+        points = line_trainer.decode_latent_vector(latVec)
+        l = Line(points, scale, rot, position={"x":posX, "y":posY}, position_type="relative")
+        return l
     
     
-    
-    
-    ###
-    @staticmethod
-    def prediction2obj(pred, lineTrainer, ref_id=None):
-        line_obj = {}
-        tensor = lineTrainer.decode_latent_vector(pred["latVec"])
-        line_obj['points'] = GraphHandler.tensor2Points(tensor)
-        line_obj['scale'] = pred["scale"]
-        line_obj['rotation'] = pred["rot"]
-        line_obj['position'] = {
-            "x": pred['posX'],
-            "y": pred['posY']
-            }
-        if ref_id:
-            line_obj['reference_id'] = ref_id
-        return line_obj
+
 
 
     

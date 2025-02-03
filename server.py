@@ -179,12 +179,13 @@ def compare(data):
 def new_pattern(data):
     print("hallo", data)
     lineTrainer = LineTrainer(data['name'])
-    gh.add_raw(data)
+    gh.clear()
+    gh.init_lines(data['list'])
         
     #latentspace auf den gleichen datensatz setzen
     gh.add_line_latentspace(lineTrainer)
    
-    gh.save_pattern_training_data(data['name'], data['name'])
+    gh.save_pattern_training_data(data['name'])
 
     #todo training hier ist broken ||||| ist das so?
     pt = PatternTrainer(data['name'])
@@ -230,16 +231,16 @@ def sample_pattern(data):
     lineTrainer = LineTrainer(data['name'])
 
     z,y,x = pt.generate()
-    pred = GraphHandler.decompose_node_hidden_state(z)
-    ground_truth = GraphHandler.decompose_node_hidden_state(y)
+    pred = GraphHandler.decompose_node_hidden_state(z, lineTrainer)
+    ground_truth = GraphHandler.decompose_node_hidden_state(y, lineTrainer)
     base_list = []
     for i in range(x.size()[0]):
-        n = GraphHandler.decompose_node_hidden_state(x[i])
-        base_list.append( GraphHandler.prediction2obj(n, lineTrainer) )
+        n = GraphHandler.decompose_node_hidden_state(x[i], lineTrainer)
+        base_list.append(n.to_JSON())
 
     info = {}
-    info["prediction"] = GraphHandler.prediction2obj(pred, lineTrainer)
-    info["ground_truth"] = GraphHandler.prediction2obj(ground_truth, lineTrainer)
+    info["prediction"] = pred.to_JSON()
+    info["ground_truth"] = ground_truth.to_JSON()
     info["base_list"] = base_list
 
     emit('prediction', info)
@@ -259,7 +260,12 @@ def generate_pattern(data):
     emit('prediction', {'base_list': lines}) """
 
     lineTrainer = LineTrainer(data['name'])
-    gh.init_random(1, lineTrainer)
+    gh.init_random(10, lineTrainer)
+
+    info = {}
+    info["base_list"] = [line.to_JSON() for line in gh.lines]
+
+    emit('prediction', info)
 
 @socketio.on('extend pattern')
 def extend_pattern(data):

@@ -283,6 +283,7 @@ export class PaperCanvas extends HTMLElement {
 				path.position = new Point(lineJSON.position.x , lineJSON.position.y)
 			}else{
 				console.log("RELATIVE POSITION", lineJSON.position, lineJSON.position_type)
+				path.position = new Point(lineJSON.position.x * this.config["max_dist"] , lineJSON.position.y * this.config["max_dist"])
 				// * this.config["max_dist"]
 			}
 		}
