@@ -4,6 +4,7 @@ import os.path as osp
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.nn import GAE, GCNConv
 from config import config
+from line import Line
 import random
 
 #Loads the dataset and handles delivery
@@ -61,26 +62,46 @@ class GraphHandler:
         self.clear()
 
     def clear(self):
-        self.raw_data = []
-        self.outer_ids = []
+        self.lines = []
 
-    def init_raw(self,raw_data):
-        #print(raw_data)
-        self.raw_data = []
-        self.outer_ids = []
-        self.add_raw(raw_data)
+    def init_lines(self,data):
+        # list with points, scale, rotation
+        # points: list of dicts with x,y like {'x': 610, 'y': 325}
+        # scale: float
+        # rotation: float
+        self.lines = []
+        self.add_lines(data)
             
-    def add_raw(self, raw_data):
-        self.raw_data += raw_data['list']
-        if('outer_ids' in raw_data):
-            self.outer_ids += raw_data['outer_ids']
+    def add_lines(self, data):
+        for line in data:
+            position = line['position'] if 'position' in line else None
+            latent_vector = line['latent_vector'] if 'latent_vector' in line else None
+            latent_name = line['latent_name'] if 'latent_name' in line else None
+            self.lines.append(Line(line['points'], line['scale'], line['rotation'], position=position, latent_vector=latent_vector, latent_name=latent_name))
 
 
+    ###
+    def init_random(self, num_samples, lineTrainer):
+        #self.raw_data = []
+        
+        for i in range(num_samples):
+            z = lineTrainer.randomInitPoint()
+            line = GraphHandler.decompose_node_hidden_state(z)
+            print(line)
+            lineObj = GraphHandler.prediction2obj(line, lineTrainer)
+            print(lineObj)
+            self.raw_data.append(lineObj)
+            #lines.append(prediction2obj(line, lineTrainer))
+
+    
+            
+
+    ###
     def get_path_name(self, name, type_name):
         return osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', name +'-'+ type_name +'.pt')
 
 
-
+    ###
     def add_line_latentspace(self,lineTrainer):
         name = lineTrainer.name
         print(self.raw_data)
@@ -108,46 +129,26 @@ class GraphHandler:
     #    print("added latent space vectors to Graph Handler", len(data), "now:", len(self.raw_data))
 
 
-
+    
     def save_line_training_data(self, name):
         data_list = []
-        print("raw data:", self.raw_data)
-        for line in self.raw_data:
-            x, edge_index = self.create_line_graph(line['points'])
-            data = Data(x=x, edge_index=edge_index, scale=line['scale'], rotation=line['rotation'])
+        
+        for line in self.lines:
+            print("LINE", line)
+            x, edge_index = line.create_line_graph()
+            data = Data(x=x, edge_index=edge_index, scale=line.scale, rotation=line.rotation, position=line.position)
             data_list.append(data)
 
-        print(data_list)
+        
         torch.save({ 'line': data_list }, self.get_path_name(name, 'line'))
 
 
 
-    def create_line_graph(self, points): #graph per stroke
-        connections = []
-        hidden_states = []
-        for i in range(1,len(points)):
-            connections.append([i-1,i])
-            connections.append([i,i-1])
-
-            connections.append([0,i])
-            connections.append([i,0])
-
-        if config['double_ended'] :
-            for i in range(0,len(points)-1):
-                connections.append([len(points)-1,i])
-                connections.append([i,len(points)-1])
-
-        edge_index = torch.tensor(connections, dtype=torch.long).t().contiguous()
-
-        for point in points:
-            hidden_states.append([point['x']-points[0]['x'], point['y']-points[0]['y']])
-
-        x = torch.tensor(hidden_states, dtype=torch.float)
-
-        return x, edge_index
+    
 
 
 
+    ### 
     def create_pattern_graph(self, pred_id, ids, latent_name):
         print("create pattern graph - ", pred_id, "on", ids)
         hidden_states = []
@@ -180,6 +181,7 @@ class GraphHandler:
         return x, edge_index, ground_truth
     
 
+    ###
     #center_point ist der punkt, der den referenzpunkt für das datensample darstellt
     def assemble_node_hidden_state(self, current_id, center_point, current_latent_vector):
         lat_vec = current_latent_vector
@@ -196,6 +198,7 @@ class GraphHandler:
         return torch.cat( (torch.tensor( [posX, posY, rot, scale], dtype=torch.float), lat_vec), 0)
 
 
+    ###
     def sample_graph(self, pred_id, latent_name, max_dist=config['max_dist']):
         dists = self.get_distance_matrix()
         max_dist = config['max_dist']
@@ -212,6 +215,8 @@ class GraphHandler:
 
         return x, edge_index, ground_truth
     
+    
+    ###
     def sample_complete_graph(self, latent_name):
         samples = []
         for i in range(len(self.raw_data)):
@@ -224,6 +229,7 @@ class GraphHandler:
         return samples
 
 
+    ###
     def save_pattern_training_data(self, latent_name, name):
         data_list = []
 
@@ -236,14 +242,26 @@ class GraphHandler:
         torch.save({ 'pattern': data_list }, self.get_path_name(name, 'pattern'))
 
 
-
+    ###
     def getAbsolutePosition(reference_id):
         return self.raw_data[reference_id]['points'][0]['x'], self.raw_data[reference_id]['points'][0]['y']
 
-    
+
+    ###
+    def get_distance_matrix(self):
+
+        dist_list = []
+        for line1 in self.raw_data:
+            dist_list.append( [ line1['points'][0]['x'], line1['points'][0]['y'] ] )
+
+        dist_tensor = torch.tensor(dist_list).float()
+        return torch.cdist(dist_tensor, dist_tensor, p=2)
         
 
 
+    
+    ###
+    @staticmethod
     def decompose_node_hidden_state(z):
         info = {
             "posX" : z[0].item(),
@@ -254,16 +272,28 @@ class GraphHandler:
         }
         
         return info
+    
+    
+    
+    
+    ###
+    @staticmethod
+    def prediction2obj(pred, lineTrainer, ref_id=None):
+        line_obj = {}
+        tensor = lineTrainer.decode_latent_vector(pred["latVec"])
+        line_obj['points'] = GraphHandler.tensor2Points(tensor)
+        line_obj['scale'] = pred["scale"]
+        line_obj['rotation'] = pred["rot"]
+        line_obj['position'] = {
+            "x": pred['posX'],
+            "y": pred['posY']
+            }
+        if ref_id:
+            line_obj['reference_id'] = ref_id
+        return line_obj
 
 
-    def get_distance_matrix(self):
-
-        dist_list = []
-        for line1 in self.raw_data:
-            dist_list.append( [ line1['points'][0]['x'], line1['points'][0]['y'] ] )
-
-        dist_tensor = torch.tensor(dist_list).float()
-        return torch.cdist(dist_tensor, dist_tensor, p=2)
+    
 
 
 

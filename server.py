@@ -2,6 +2,7 @@ from flask import Flask, render_template
 from flask_socketio import SocketIO, send, emit
 from DrawData import GraphHandler
 from Model import LineTrainer, PatternTrainer
+from line import Line
 import json
 import os
 import os.path as osp
@@ -28,29 +29,9 @@ gh = GraphHandler()
 #dataset = MyOwnDataset("testdata", path)
 
 
-def tensor2Points(x):
-    points = []
 
-    for i in range(x.shape[0]):
-        points.append({
-            'x': x[i][0].item(),
-            'y': x[i][1].item()
-            })
-    return points
 
-def prediction2obj(pred, lineTrainer, ref_id=None):
-    line_obj = {}
-    tensor = lineTrainer.decode_latent_vector(pred["latVec"])
-    line_obj['points'] = tensor2Points(tensor)
-    line_obj['scale'] = pred["scale"]
-    line_obj['rotation'] = pred["rot"]
-    line_obj['position'] = {
-        "x": pred['posX'],
-        "y": pred['posY']
-        }
-    if ref_id:
-        line_obj['reference_id'] = ref_id
-    return line_obj
+
 
 @socketio.event
 def connect():
@@ -102,7 +83,7 @@ def new_dataset(data):
     if len(data['list']) == 0:
         print("ERROR: no drawing data transmitted!")
     else:
-        gh.init_raw(data)
+        gh.init_lines(data['list'])
         gh.save_line_training_data(data['name'])
 
         lineTrainer = LineTrainer(data['name'])
@@ -114,8 +95,8 @@ def send_progress(trainer, text, label=None):
         pointlist = []
         for z in text:
             print(z)
-            tensor = trainer.decode_latent_vector(z)
-            pointlist.append(tensor2Points(tensor))
+            points_tensor = trainer.decode_latent_vector(z)
+            pointlist.append(Line(points_tensor).to_JSON())
         #print(pointlist)
         emit('progress', {'lines': pointlist} )
     else:
@@ -135,20 +116,16 @@ def getModels():
 @socketio.on('generate')
 def generate(data):
     print(data)
-    print("RAW", gh.raw_data)
     lineTrainer = LineTrainer(data['name'])
 
-    tensors, scales, rotations = lineTrainer.generate(10, 'random')
-    tensors2, scales2, rotations2 = lineTrainer.generate(10, 'random')
+    lines1 = lineTrainer.generate(10, 'random')
+    lines2 = lineTrainer.generate(10, 'random')
     
-    pointlist = []
+    lines = lines1 + lines2
+    lines = list(map(lambda line: line.to_JSON(), lines)) 
+    
 
-    for tensor in tensors:
-        pointlist.append(tensor2Points(tensor))
-    for tensor in tensors2:
-        pointlist.append(tensor2Points(tensor))
-
-    emit('result', {'list': pointlist, 'scales':scales+scales2, 'rotations':rotations+rotations2})
+    emit('result', {'list': lines})
     
 @socketio.on('convertToLatentspace')
 def convertToLatentspace(data):
@@ -170,7 +147,7 @@ def convertToLatentspace(data):
         
         
         latentLine = trainer.decode_latent_vector(zMatch)
-        pointlist.append(tensor2Points(latentLine))
+        pointlist.append(GraphHandler.tensor2Points(latentLine))
     
     
 
@@ -189,10 +166,10 @@ def compare(data):
     for z in tensors:
         print(z)
         tensor = trainer.decode_latent_vector(z)
-        pointlist.append(tensor2Points(tensor))
+        pointlist.append(GraphHandler.tensor2Points(tensor))
         
     for ori in originpoints:
-        originlist.append(tensor2Points(ori))
+        originlist.append(GraphHandler.tensor2Points(ori))
         
     emit('result', {'list': pointlist, "origins":originlist})
 
@@ -258,11 +235,11 @@ def sample_pattern(data):
     base_list = []
     for i in range(x.size()[0]):
         n = GraphHandler.decompose_node_hidden_state(x[i])
-        base_list.append( prediction2obj(n, lineTrainer) )
+        base_list.append( GraphHandler.prediction2obj(n, lineTrainer) )
 
     info = {}
-    info["prediction"] = prediction2obj(pred, lineTrainer)
-    info["ground_truth"] = prediction2obj(ground_truth, lineTrainer)
+    info["prediction"] = GraphHandler.prediction2obj(pred, lineTrainer)
+    info["ground_truth"] = GraphHandler.prediction2obj(ground_truth, lineTrainer)
     info["base_list"] = base_list
 
     emit('prediction', info)
@@ -270,7 +247,7 @@ def sample_pattern(data):
 
 @socketio.on('generate pattern')
 def generate_pattern(data):
-    pt = PatternTrainer(data['name'])
+    """ pt = PatternTrainer(data['name'])
     lineTrainer = LineTrainer(data['name'])
     lines = []
 
@@ -279,8 +256,10 @@ def generate_pattern(data):
         line = GraphHandler.decompose_node_hidden_state(z)
         lines.append(prediction2obj(line, lineTrainer))
         
-    emit('prediction', {'base_list': lines})
+    emit('prediction', {'base_list': lines}) """
 
+    lineTrainer = LineTrainer(data['name'])
+    gh.init_random(1, lineTrainer)
 
 @socketio.on('extend pattern')
 def extend_pattern(data):

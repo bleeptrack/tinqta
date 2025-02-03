@@ -12,6 +12,7 @@ from torch_geometric.datasets import Planetoid
 from torch_geometric.utils import dropout_node
 from torch_geometric.nn import GAE, VGAE, GCNConv, global_mean_pool, global_max_pool, Linear, TransformerConv,  SAGEConv, GCN
 from DrawData import GraphDataset
+from line import Line
 from config import config
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils.num_nodes import maybe_num_nodes
@@ -311,7 +312,7 @@ class LineTrainer():
 
                 # Loading image(s) and
                 # reshaping it into a 1-d vector
-
+                
 
                 # Generating output
                 mu, logvar = self.model.encode(train_data.x, train_data.edge_index)
@@ -346,7 +347,7 @@ class LineTrainer():
             print("Epoch:", epoch, "Loss:", running_loss, l1, l2, m, w)
 
             if math.isnan(running_loss):
-                die()
+                die_linetrainen_runningloss_nan()
 
             diff = 0
             for d in range(1,len(loss_list)):
@@ -435,17 +436,15 @@ class LineTrainer():
         self.model.eval()
 
         lines = []
-        scales = []
-        rotations = []
+        
 
         for i in range(nr):
             if faktor is 'random':
                 z = self.randomLatentVector()
-               
-                print("random", z)
-                lines.append(self.model.decode(z))
-                scales.append(1)
-                rotations.append(0)
+
+                
+                l = Line(self.model.decode(z))
+                lines.append(l)
             else:
                 datanum = random.randint(0,self.dataset.len()-1)
 
@@ -468,17 +467,16 @@ class LineTrainer():
                 #z = z1
 
                 #z = torch.add( torch.divide(torch.subtract(z2,z1), random.randint(10,20)), z1)
-                lines.append(self.model.decode(z))
-                scales.append(self.dataset[datanum].scale.item())
-                rotations.append(self.dataset[datanum].rotation.item())
-
+                
+                l = Line.from_tensor(self.model.decode(z), self.dataset[datanum].scale.item(), self.dataset[datanum].rotation.item())
+                lines.append(l)
         #for i in range(nr):
         #    z = self.randomLatentVector()
         #    lines.append(self.model.decode(z))
 
 
-
-        return lines, scales, rotations
+        print(lines)
+        return lines
 
     def randomLatentVector(self):
 

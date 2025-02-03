@@ -37,9 +37,11 @@ export class PatternTrainer extends HTMLElement {
 		this.socket.on('result', (data) => {
 			console.log(data)
 			for(let idx in data.list){
+				console.log(data.list[idx])
 				let drawnLine = this.canvas.drawLine(data.list[idx], "black")
-				drawnLine.scale(data.scales[idx])
-				drawnLine.rotate(data.rotations[idx]*360)
+				drawnLine.position = paper.view.center
+				//drawnLine.scale(data.scales[idx])
+				//drawnLine.rotate(data.rotations[idx]*360)
 			}
 		});
 

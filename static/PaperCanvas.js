@@ -271,7 +271,32 @@ export class PaperCanvas extends HTMLElement {
 		let l = this.originalLines.pop()
 		l.remove()
 	}
+
+	drawLine(lineJSON, color, smoothing){
+		console.log("DRAWING LINE", lineJSON)
+		let path = new Path({segments: lineJSON.points})
+		path.strokeColor = color
+		path.pivot = path.firstSegment.point
+
+		if(lineJSON.position){
+			if(lineJSON.position_type == "absolute"){
+				path.position = new Point(lineJSON.position.x , lineJSON.position.y)
+			}else{
+				console.log("RELATIVE POSITION", lineJSON.position, lineJSON.position_type)
+				// * this.config["max_dist"]
+			}
+		}
+
+		path.scale(lineJSON.scale)
+		path.rotate(lineJSON.rotation * 360)
+
+		if (smoothing) {
+			path.simplify()
+		}
+		return path
+	}
 	
+	/*
 	drawLine(baseLine, color, smoothing) {
 		let points
 		if (Array.isArray(baseLine)) {
@@ -309,6 +334,7 @@ export class PaperCanvas extends HTMLElement {
 		}
 		return path
 	}	
+	*/
 
 	calculateAngle(path){
 		let info = path.clone()
@@ -428,12 +454,14 @@ export class PaperCanvas extends HTMLElement {
 		
 		
 		for(let [idx,line] of Object.entries(data.lines)){
+			line.scale = this.linelist[idx].scale
+			line.rotation = this.linelist[idx].rotation
 			let paperline = this.drawLine(line, "grey")
 			paperline.strokeWidth = 5
 			paperline.opacity = 0.5
 			paperline.position = this.originalLines[idx].firstSegment.point
-			paperline.scale(this.linelist[idx].scale, paperline.firstSegment.point)
-			paperline.rotate(this.linelist[idx].rotation*360, paperline.firstSegment.point)
+			//paperline.scale(this.linelist[idx].scale, paperline.firstSegment.point)
+			//paperline.rotate(this.linelist[idx].rotation*360, paperline.firstSegment.point)
 			paperline.remove()
 			
 			iteration.push(paperline)
