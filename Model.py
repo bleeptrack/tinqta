@@ -487,8 +487,9 @@ class LineTrainer():
     
     def randomInitPoint(self):
         z = torch.randn(config['latent_size'])
-        pos = torch.rand(4)
-        return torch.cat( (pos, z), 0)
+        pos = (torch.rand(2) * 2) - 1
+        scalerot = torch.rand(2)
+        return torch.cat( (pos,scalerot, z), 0)
     
     def getClosestMatch(self, z):
         latentvectors, _ = self.extractOriginLineVectors()

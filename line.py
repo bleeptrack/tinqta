@@ -32,6 +32,15 @@ class Line():
                 })
         return points
     
+    def update_position_from_reference(self, point):
+        print("updating position from reference", self.position, point)
+        if(self.position_type == "relative"):
+            self.position['x'] *= config['max_dist']
+            self.position['y'] *= config['max_dist']
+        self.position['x'] += point['x']
+        self.position['y'] += point['y']
+        self.position_type = "absolute"
+    
     def add_latent_vector(self, latent_vector, latent_name):
         self.latent_vectors[latent_name] = latent_vector
     

@@ -259,13 +259,28 @@ def generate_pattern(data):
         
     emit('prediction', {'base_list': lines}) """
 
-    lineTrainer = LineTrainer(data['name'])
-    gh.init_random(10, lineTrainer)
+    if(len(gh.lines) == 0):
+        lineTrainer = LineTrainer(data['name'])
+        pt = PatternTrainer(data['name'])
+        gh.clear()
+        gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
+        gh.init_random(10)
+        
 
-    info = {}
-    info["base_list"] = [line.to_JSON() for line in gh.lines]
+        info = {}
+        info["base_list"] = [line.to_JSON() for line in gh.lines]
 
-    emit('prediction', info)
+        emit('prediction', info)
+
+    else:
+        gh.calculate_gen_step()
+        info = {}
+        info["base_list"] = [line.to_JSON() for line in gh.lines]
+        info["prediction"] = [line.to_JSON() for line in gh.gen_step]
+
+        emit('prediction', info)
+
+        gh.apply_gen_step()
 
 @socketio.on('extend pattern')
 def extend_pattern(data):

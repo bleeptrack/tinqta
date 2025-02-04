@@ -59,8 +59,16 @@ export class PatternTrainer extends HTMLElement {
 				l.translate(paper.view.center)
 			}
 			if(data["prediction"]){
-				let l = this.canvas.drawLine(data["prediction"], "blue")
-				l.translate(paper.view.center)
+				if(Array.isArray(data["prediction"])){
+					for(let line of data["prediction"]){
+						let l = this.canvas.drawLine(line, "blue")
+						l.translate(paper.view.center)
+					}
+				}else{
+					let l = this.canvas.drawLine(data["prediction"], "blue")
+					l.translate(paper.view.center)
+				}
+				
 			}
 		});
 		
