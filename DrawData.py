@@ -7,7 +7,8 @@ from config import config
 from line import Line
 import random
 
-#Loads the dataset and handles delivery
+
+""" #Loads the dataset and handles delivery
 class GraphDataset(InMemoryDataset):
     def __init__(self, name, level, transform=None, pre_transform=None, pre_filter=None):
         self.base_name = name
@@ -57,6 +58,64 @@ class GraphDataset(InMemoryDataset):
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
+ """
+
+class GraphDatasetHandler():
+    def __init__(self, name, level):
+        self.name = name
+        self.level = level
+
+    def save_data(self, data):
+
+        file_path = osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'-'+ self.level +'.pt')
+        if osp.exists(file_path):
+            print("removing old data")
+            os.remove(file_path)
+        
+
+        print("PREPARING DATA FOR SAVING")
+        self.data = data
+        self.original_data = data.copy()
+        self.config = config
+
+        if self.config['jitter_pattern'] > 0 and self.level == "pattern":
+            print("jittering pattern data")
+
+        if self.config['jitter_line'] > 0 and self.level == "line":
+            print("jittering line data")
+            for data in self.original_data:
+                for i in range(self.config['jitter_line_additional_lines']):
+                    new_data = data.clone()
+                    new_data.x = data.x + torch.randn(data.x.size()) * self.config['stroke_normalizing_size'] * self.config['jitter_line']
+                    self.data.append(new_data)
+
+            
+        print()
+
+        print("SAVING DATA", len(self.data), "originals:", len(self.original_data))
+        torch.save(self, osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'-'+ self.level +'.pt'))
+
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, index):
+        return self.data[index]
+    
+    def __setitem__(self, index, value):
+        self.data[index] = value
+
+    def get_random_original_item(self):
+        return self.original_data[random.randint(0, len(self.original_data)-1)]
+
+    @property
+    def num_features(self):
+        return self.data[0].num_features
+    
+
+    @classmethod
+    def load_data(cls, name, level):
+        print("LOADING DATA")
+        return torch.load(osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', name +'-'+ level +'.pt'))
 
 class GraphHandler:
     def __init__(self):
@@ -160,8 +219,8 @@ class GraphHandler:
             data = Data(x=x, edge_index=edge_index, scale=line.scale, rotation=line.rotation, position=line.position)
             data_list.append(data)
 
-        
-        torch.save({ 'line': data_list }, self.get_path_name(name, 'line'))
+        line_data = GraphDatasetHandler(name, "line")
+        line_data.save_data(data_list)
 
 
 
@@ -287,7 +346,9 @@ class GraphHandler:
                 data_list.append(data)
                 
         print("saving dataset of length ", len(data_list))
-        torch.save({ 'pattern': data_list }, self.get_path_name(name, 'pattern'))
+        pattern_data = GraphDatasetHandler(name, "pattern")
+        pattern_data.save_data(data_list)
+        
 
 
 

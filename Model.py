@@ -11,7 +11,7 @@ import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.utils import dropout_node
 from torch_geometric.nn import GAE, VGAE, GCNConv, global_mean_pool, global_max_pool, Linear, TransformerConv,  SAGEConv, GCN
-from DrawData import GraphDataset
+from DrawData import GraphDatasetHandler
 from line import Line
 from config import config
 from torch_geometric.loader import DataLoader
@@ -25,10 +25,11 @@ class GCNEncoder(torch.nn.Module):
         super().__init__()
 
         num_features = 2
+        
 
         self.conv1 =  GCNConv(num_features, 2 * num_features)
         self.conv2 =  GCNConv(2 * num_features, 4 * num_features)
-        self.lin = Linear(-1, config['latent_size'])
+        #self.lin = Linear(-1, config['latent_size'])
 
         self.mu = Linear(-1, config['latent_size'])
         self.logvar = Linear(-1, config['latent_size'])
@@ -50,14 +51,23 @@ class GCNEncoder(torch.nn.Module):
 
     def forward(self, x, edge_index):
         #encode
+
+        batch_size = x.size(0)/config['nrPoints']
+
         x = self.conv1(x, edge_index).relu()
         x, edge_index = self.pool_pairs(x)
+
 
         x = self.conv2(x, edge_index).relu()
         x, edge_index = self.pool_pairs(x)
 
         #reshape to linear
+        
         x = x.flatten()
+      
+        second_size = x.size(0)/batch_size
+        x = x.view(int(batch_size), int(second_size))
+
 
         return self.mu(x), self.logvar(x)
 
@@ -87,12 +97,19 @@ class GCNDecoder(torch.nn.Module):
 
 
     def forward(self, x):
+        batch_size = x.size(0)
+
         x = self.lin1(x).relu()
         x = self.lin2(x).relu()
-        x = self.lin3(x)
+        x = self.lin3(x)       
+
+        x = x.view(-1, 60, 2)
+        x = x.flatten(0, 1)
+       
+        return x
 
         #reshape
-        return x.unflatten(0, ( config['nrPoints'], 2 ) )
+        #return x.unflatten(0, ( config['nrPoints'] * batch_size, 2 ) )
 
 
 
@@ -211,23 +228,6 @@ class VariationalLinearEncoder(torch.nn.Module):
     def forward(self, x, edge_index):
         return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 
-def train(train_data):
-    model.train()
-    optimizer.zero_grad()
-    z = model.encode(train_data.x, train_data.edge_index)
-    loss = model.recon_loss(z, train_data.pos_edge_label_index)
-    if args.variational:
-        loss = loss + (1 / train_data.num_nodes) * model.kl_loss()
-    loss.backward()
-    optimizer.step()
-    return float(loss)
-
-
-@torch.no_grad()
-def test(data):
-    model.eval()
-    z = model.encode(data.x, data.edge_index)
-    return model.test(z, data.pos_edge_label_index, data.neg_edge_label_index)
 
 
 class LineTrainer():
@@ -242,7 +242,8 @@ class LineTrainer():
         ])
 
         self.model_path = osp.join(osp.dirname(osp.realpath(__file__)), 'lineModels', name)
-        self.dataset = GraphDataset(name, level="line", transform=transform)
+        self.dataset = GraphDatasetHandler.load_data(name, "line")
+        self.loader = DataLoader(self.dataset.data, batch_size=config['batch_size_line'], shuffle=True)
         self.in_channels, self.hidden_channels, self.out_channels = self.dataset.num_features, self.dataset.num_features*2, config['latent_size']
         #out_channels hab ich mal verdoppelt
         self.name = name
@@ -308,7 +309,8 @@ class LineTrainer():
             running_loss = 0
 
             # Iterating over the training dataset
-            for train_data in self.dataset:
+            #ToDo: hier muss man die loader verwenden?
+            for train_data in self.loader:
 
                 # Loading image(s) and
                 # reshaping it into a 1-d vector
@@ -316,8 +318,12 @@ class LineTrainer():
 
                 # Generating output
                 mu, logvar = self.model.encode(train_data.x, train_data.edge_index)
+                
+                
                 z = self.reparameterize(mu, logvar)
+                
                 out = self.model.decode(z)
+                
 
                 # Calculating loss
                 loss, l1, l2, w, m = self.loss_function(out, train_data.x, mu, logvar, epoch)
@@ -335,7 +341,7 @@ class LineTrainer():
 
 
             # Averaging out loss over entire batch
-            running_loss /= self.dataset.len()
+            running_loss /= len(self.loader.sampler)
 
             #if epoch > 1400 and running_loss<200:
                 #self.scheduler.step(running_loss)
@@ -414,11 +420,11 @@ class LineTrainer():
         self.model.eval()
         vectors = []
         originpoints = []
-        for i in range(self.dataset.len()):
-            mu, logvar = self.model.encode(self.dataset[i].x, self.dataset[i].edge_index)
+        for data in self.dataset.original_data:
+            mu, logvar = self.model.encode(data.x, data.edge_index)
             z = self.reparameterize(mu, logvar)
             vectors.append(z)
-            originpoints.append(self.dataset[i].x)
+            originpoints.append(data.x)
         return vectors, originpoints
 
     def encodeLineVector(self, x, edge_index):
@@ -519,11 +525,9 @@ class PatternTrainer():
         ])
 
         self.model_path = osp.join(osp.dirname(osp.realpath(__file__)), 'patternModels', name)
-        self.dataset = GraphDataset(name, level="pattern", transform=transform)
-        print("dataset info after loading ", self.dataset.len(), self.dataset.level)
-        print(self.dataset.data)
-        print(self.dataset.len())
-        self.loader = DataLoader(self.dataset, batch_size=config['batch_size'])
+        self.dataset = GraphDatasetHandler.load_data(name, "pattern")
+        print("dataset info after loading ", len(self.dataset), self.dataset.level)
+        self.loader = DataLoader(self.dataset.data, batch_size=config['batch_size_pattern'], shuffle=True)
         
         self.in_channels = self.out_channels = self.dataset.num_features
         self.hidden_channels = self.dataset.num_features*2
@@ -567,6 +571,7 @@ class PatternTrainer():
         for epoch in range(self.epochs):
 
             running_loss = 0
+
 
             #for train_data in self.dataset:
             for train_data in self.loader:
@@ -628,14 +633,14 @@ class PatternTrainer():
     def generate(self):
         #wir haben hier noch nie probiert mit einem richtigen random z was zu generieren, oder?
         self.model.eval()
-        print("dataset info", self.dataset.len(), self.dataset.level)
+        print("dataset info", len(self.dataset), self.dataset.level)
 
-        datanum = random.randint(0,self.dataset.len()-1)
-        print(datanum)
-        z = self.model.forward(self.dataset[datanum].x, self.dataset[datanum].edge_index)
+        data = self.dataset.get_random_original_item()
+       
+        z = self.model.forward(data.x, data.edge_index)
         print(z)
-        print(self.dataset[datanum].y)
-        return z, self.dataset[datanum].y, self.dataset[datanum].x
+        print(data.y)
+        return z, data.y, data.x
 
     def predict(self, x, edge_index):
         self.model.eval()
