@@ -44,9 +44,10 @@ class GraphDataset(InMemoryDataset):
         complete_data = torch.load(osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'.pt'))
 
         print("handling data at level ", self.level)
+        print(osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'.pt'))
 
         data_list = complete_data[self.level]
-        print("Loading Dataset of length: ", len(data_list))
+        print("Processing Dataset of length: ", len(data_list))
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
@@ -80,6 +81,8 @@ class GraphHandler:
             position = line['position'] if 'position' in line else None
             self.lines.append(Line(line['points'], line['scale'], line['rotation'], position=position))
 
+            print("lines added", self.lines[-1])
+
     def set_default_trainers(self, pattern_trainer=None, line_trainer=None):
         self.pattern_trainer = pattern_trainer
         self.line_trainer = line_trainer
@@ -103,7 +106,7 @@ class GraphHandler:
     def calculate_gen_step(self):
         
         self.gen_step = []
-        adation_rate = 0.05
+        adation_rate = 0.005
 
 
         for i in range(len(self.lines)):
@@ -168,26 +171,36 @@ class GraphHandler:
 
     
     def create_pattern_graph(self, pred_id, ids, latent_name=None):
-        print("create pattern graph - ", pred_id, "on", ids)
+        if len(ids) == 0:
+            raise ValueError("no ids given to create pattern graph")
+
+
         hidden_states = []
 
         if latent_name is None:
             latent_name = self.pattern_trainer.name
 
         if pred_id in ids:
-            ids.remove(pred_id)
-            print("removed prediction id from ids")
+            print("removed prediction id from ids", pred_id, ids)
+            ids = ids[ids != pred_id]
+
         
-        x_max_coord = max([self.lines[i].get_absoulte_maxX() for i in ids])
-        x_min_coord = min([self.lines[i].get_absoulte_minX() for i in ids])
-        y_max_coord = max([self.lines[i].get_absoulte_maxY() for i in ids])
-        y_min_coord = min([self.lines[i].get_absoulte_minY() for i in ids])
-        print(f"center: ({x_min_coord}, {y_min_coord}), ({x_max_coord}, {y_max_coord})")
-        center_point = { "x": (x_max_coord+x_min_coord)/2, "y": (y_max_coord+y_min_coord)/2 }
         
+        # x_max_coord = max([self.lines[i].get_absoulte_maxX() for i in ids])
+        # x_min_coord = min([self.lines[i].get_absoulte_minX() for i in ids])
+        # y_max_coord = max([self.lines[i].get_absoulte_maxY() for i in ids])
+        # y_min_coord = min([self.lines[i].get_absoulte_minY() for i in ids])
+        # print(f"center: ({x_min_coord}, {y_min_coord}), ({x_max_coord}, {y_max_coord})")
+        # center_point = { "x": (x_max_coord+x_min_coord)/2, "y": (y_max_coord+y_min_coord)/2 }
+
+        centers_X = [self.lines[i].position['x'] for i in ids]
+        centers_Y = [self.lines[i].position['y'] for i in ids]
+        center_point = { "x": sum(centers_X)/len(centers_X), "y": sum(centers_Y)/len(centers_Y) }
+        print("center_point calculated", center_point)
 
         for i in ids:
             hid = self.assemble_node_hidden_state(i, center_point, latent_name)
+            print("hid", hid)
             hidden_states.append(hid)
 
         if pred_id is not None:
@@ -238,7 +251,6 @@ class GraphHandler:
             latent_name = self.pattern_trainer.name
 
         dists = self.get_distance_matrix()
-        max_dist = config['max_dist']
         dists = dists * (dists < max_dist)
         sorted_dists, indices = torch.sort(dists)
 
@@ -247,6 +259,9 @@ class GraphHandler:
         not_zero = current!=0
         current = current[not_zero]
         ids = current_ids[not_zero]
+
+        if len(ids) == 0:
+            return None, None, None, None
         
         x, edge_index, ground_truth, center_point = self.create_pattern_graph(pred_id, ids, latent_name)
 
@@ -264,9 +279,12 @@ class GraphHandler:
         data_list = []
 
         for i in range(len(self.lines)):
-            x, edge_idx, ground_truth = self.sample_graph(i, latent_name)     
-            data = Data(x=x, edge_index=edge_idx, y=ground_truth)
-            data_list.append(data)
+            x, edge_idx, ground_truth, center_point = self.sample_graph(i, latent_name)  
+            
+            if x is not None:
+                data = Data(x=x, edge_index=edge_idx, y=ground_truth, center_point=center_point)
+                print("data", data, data.x)
+                data_list.append(data)
                 
         print("saving dataset of length ", len(data_list))
         torch.save({ 'pattern': data_list }, self.get_path_name(name, 'pattern'))

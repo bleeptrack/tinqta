@@ -261,7 +261,7 @@ class LineTrainer():
 
         self.model = self.model.to(device)
         if osp.exists(self.model_path):
-            print("MODEL EXISTS. LOADING...")
+            print("LINE MODEL EXISTS. LOADING...", self.model_path)
             self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu')))
         ##self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         ##self.scheduler = ReduceLROnPlateau(self.optimizer, patience=60, cooldown=20)
@@ -520,6 +520,9 @@ class PatternTrainer():
 
         self.model_path = osp.join(osp.dirname(osp.realpath(__file__)), 'patternModels', name)
         self.dataset = GraphDataset(name, level="pattern", transform=transform)
+        print("dataset info after loading ", self.dataset.len(), self.dataset.level)
+        print(self.dataset.data)
+        print(self.dataset.len())
         self.loader = DataLoader(self.dataset, batch_size=config['batch_size'])
         
         self.in_channels = self.out_channels = self.dataset.num_features
@@ -539,7 +542,7 @@ class PatternTrainer():
 
         self.model = self.model.to(device)
         if osp.exists(self.model_path):
-            print("MODEL EXISTS. LOADING...")
+            print("PATTERNMODEL EXISTS. LOADING...", self.model_path)
             self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu')))
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         self.scheduler = ReduceLROnPlateau(self.optimizer)
@@ -625,6 +628,7 @@ class PatternTrainer():
     def generate(self):
         #wir haben hier noch nie probiert mit einem richtigen random z was zu generieren, oder?
         self.model.eval()
+        print("dataset info", self.dataset.len(), self.dataset.level)
 
         datanum = random.randint(0,self.dataset.len()-1)
         print(datanum)

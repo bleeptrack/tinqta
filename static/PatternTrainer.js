@@ -51,25 +51,26 @@ export class PatternTrainer extends HTMLElement {
 			if(data["base_list"]){
 				for(let line of data["base_list"]){
 					let l = this.canvas.drawLine(line, "black")
-					l.translate(paper.view.center)
+					//l.translate(paper.view.center)
 				}
 			}
 			if(data["ground_truth"]){
 				let l = this.canvas.drawLine(data["ground_truth"], "red")
-				l.translate(paper.view.center)
+				//l.translate(paper.view.center)
 			}
 			if(data["prediction"]){
 				if(Array.isArray(data["prediction"])){
 					for(let line of data["prediction"]){
 						let l = this.canvas.drawLine(line, "blue")
-						l.translate(paper.view.center)
+						//l.translate(paper.view.center)
 					}
 				}else{
 					let l = this.canvas.drawLine(data["prediction"], "blue")
-					l.translate(paper.view.center)
+					//l.translate(paper.view.center)
 				}
 				
 			}
+			this.canvas.centerDrawing()
 		});
 		
 		

@@ -21,6 +21,24 @@ socketio = SocketIO(app)
 Path("./baseData").mkdir(exist_ok=True)
 Path("./lineModels").mkdir(exist_ok=True)
 
+#create folders if they dont exist yet
+Path("./data").mkdir(exist_ok=True)
+
+#delete all content in data folder
+data_path = osp.join(osp.dirname(osp.realpath(__file__)), 'data')
+for file in os.listdir(data_path):
+    file_path = osp.join(data_path, file)
+    try:
+        if os.path.isfile(file_path):
+            os.unlink(file_path)
+        elif os.path.isdir(file_path):
+            import shutil
+            shutil.rmtree(file_path)
+    except Exception as e:
+        print(f'Failed to delete {file_path}. Reason: {e}')
+
+
+
 gh = GraphHandler()
 
 
@@ -179,15 +197,15 @@ def compare(data):
 def new_pattern(data):
     print("hallo", data)
     lineTrainer = LineTrainer(data['name'])
+    
     gh.clear()
     gh.init_lines(data['list'])
+    gh.set_default_trainers(line_trainer=lineTrainer)
         
-    #latentspace auf den gleichen datensatz setzen
-    gh.add_line_latentspace(lineTrainer)
+    gh.add_line_latentspace()
    
     gh.save_pattern_training_data(data['name'])
 
-    #todo training hier ist broken ||||| ist das so?
     pt = PatternTrainer(data['name'])
     pt.trainModel()
 
@@ -229,13 +247,15 @@ def sample_pattern(data):
 
     pt = PatternTrainer(data['name'])
     lineTrainer = LineTrainer(data['name'])
+    gh.clear()
+    gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
 
     z,y,x = pt.generate()
-    pred = GraphHandler.decompose_node_hidden_state(z, lineTrainer)
-    ground_truth = GraphHandler.decompose_node_hidden_state(y, lineTrainer)
+    pred = gh.decompose_node(z)
+    ground_truth = gh.decompose_node(y)
     base_list = []
     for i in range(x.size()[0]):
-        n = GraphHandler.decompose_node_hidden_state(x[i], lineTrainer)
+        n = gh.decompose_node(x[i])
         base_list.append(n.to_JSON())
 
     info = {}
@@ -264,7 +284,7 @@ def generate_pattern(data):
         pt = PatternTrainer(data['name'])
         gh.clear()
         gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
-        gh.init_random(10)
+        gh.init_random(5)
         
 
         info = {}
@@ -273,14 +293,16 @@ def generate_pattern(data):
         emit('prediction', info)
 
     else:
-        gh.calculate_gen_step()
-        info = {}
-        info["base_list"] = [line.to_JSON() for line in gh.lines]
-        info["prediction"] = [line.to_JSON() for line in gh.gen_step]
+        for i in range(500):
+            gh.calculate_gen_step()
+            info = {}
+            info["base_list"] = [line.to_JSON() for line in gh.lines]
+            info["prediction"] = [line.to_JSON() for line in gh.gen_step]
 
-        emit('prediction', info)
+            emit('prediction', info)
 
-        gh.apply_gen_step()
+            gh.apply_gen_step()
+            #socketio.sleep(0.05)  # 50ms delay
 
 @socketio.on('extend pattern')
 def extend_pattern(data):

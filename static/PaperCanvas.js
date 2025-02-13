@@ -79,6 +79,10 @@ export class PaperCanvas extends HTMLElement {
 	clear(){
 		paper.project.activeLayer.removeChildren()
 	}
+
+	centerDrawing(){
+		paper.view.center = paper.project.activeLayer.bounds.center
+	}
 	
 	setPlaceholder(){
 		paper.project.importSVG("/static/placeholder.svg", (svg) => {
