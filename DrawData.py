@@ -5,6 +5,7 @@ from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.nn import GAE, GCNConv
 from config import config
 from line import Line
+from itertools import product
 import random
 
 
@@ -78,16 +79,49 @@ class GraphDatasetHandler():
         self.original_data = data.copy()
         self.config = config
 
-        if self.config['jitter_pattern'] > 0 and self.level == "pattern":
-            print("jittering pattern data")
 
-        if self.config['jitter_line'] > 0 and self.level == "line":
-            print("jittering line data")
-            for data in self.original_data:
-                for i in range(self.config['jitter_line_additional_lines']):
-                    new_data = data.clone()
-                    new_data.x = data.x + torch.randn(data.x.size()) * self.config['stroke_normalizing_size'] * self.config['jitter_line']
-                    self.data.append(new_data)
+        if self.level == "pattern":
+
+            if self.config['create_pattern_combinations']:
+                print("creating pattern combinations")
+                for data in self.original_data:
+                    n = data.num_nodes
+                    print("n", n)
+                    # Create all possible boolean combinations for each node
+                    
+                    combinations = torch.tensor(list(product([False, True], repeat=n)))
+                    # Remove the combination that's all False
+                    combinations = combinations[combinations.any(dim=1)]
+                    # Create new data objects for each combination
+                    for combo in combinations:
+                        #print("combo", combo)
+                        sub_data = data.subgraph(combo)
+                        sub_data.y = data.y.clone() #overwrite possible changes from subgraph
+                        self.recalculate_center_point(sub_data)
+                        #ToDo recalculate center point?
+                        self.data.append(sub_data)
+
+                print("created", len(self.data), "combinations")
+
+                    
+
+
+            if self.config['jitter_pattern'] > 0 :
+                print("jittering pattern data")
+
+          
+
+
+
+        if self.level == "line":
+
+            if self.config['jitter_line'] > 0:
+                print("jittering line data")
+                for data in self.original_data:
+                    for i in range(self.config['jitter_line_additional_lines']):
+                        new_data = data.clone()
+                        new_data.x = data.x + torch.randn(data.x.size()) * self.config['stroke_normalizing_size'] * self.config['jitter_line']
+                        self.data.append(new_data)
 
             
         print()
@@ -103,6 +137,12 @@ class GraphDatasetHandler():
     
     def __setitem__(self, index, value):
         self.data[index] = value
+
+    def recalculate_center_point(self, data):
+        pos = torch.mean(data.x[:, 0:2], dim=0)
+        data.center_point['x'] += pos[0].item()
+        data.center_point['y'] += pos[1].item()
+        #print("moved centerpoint", pos)
 
     def get_random_original_item(self):
         return self.original_data[random.randint(0, len(self.original_data)-1)]
@@ -299,7 +339,9 @@ class GraphHandler:
         
         rot = line.rotation
         scale = line.scale
-        #print(lat_vec.size(), posX, posY, rot, scale)
+        print(lat_vec.size(), delta_posX, delta_posY, rot, scale)
+        print(lat_vec)
+
         
         return torch.cat( (torch.tensor( [delta_posX, delta_posY, rot, scale], dtype=torch.float), lat_vec), 0)
 

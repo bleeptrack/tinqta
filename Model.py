@@ -10,7 +10,7 @@ import random
 import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.utils import dropout_node
-from torch_geometric.nn import GAE, VGAE, GCNConv, global_mean_pool, global_max_pool, Linear, TransformerConv,  SAGEConv, GCN
+from torch_geometric.nn import GAE, VGAE, GCNConv,GraphConv, global_mean_pool, global_add_pool, Linear, TransformerConv,  SAGEConv, GCN
 from DrawData import GraphDatasetHandler
 from line import Line
 from config import config
@@ -99,12 +99,20 @@ class GCNDecoder(torch.nn.Module):
     def forward(self, x):
         batch_size = x.size(0)
 
+        #add batch dimension if not present
+        if len(x.size()) == 1:
+            x = x.unsqueeze(0)
+
         x = self.lin1(x).relu()
         x = self.lin2(x).relu()
         x = self.lin3(x)       
 
         x = x.view(-1, 60, 2)
         x = x.flatten(0, 1)
+
+        #remove batch dimension if there is no batch
+        if x.size(0) == 1:
+            x = x.squeeze(0)
        
         return x
 
@@ -121,13 +129,11 @@ class PatternEncoder(torch.nn.Module):
 
         extended_lat_size = int( config['latent_size'] + 4 ) # +4 fuer posx, posy, scale, rot
 
-        self.conv = GCNConv( extended_lat_size , extended_lat_size * 2 )
-        self.conv2 = GCNConv( extended_lat_size * 2 , extended_lat_size )
-        self.lin1 = Linear(-1, extended_lat_size )
-        self.lin2 = Linear(-1, extended_lat_size*8 )
-        self.lin22 = Linear(-1, extended_lat_size*8 )
-        self.lin23 = Linear(-1, extended_lat_size*8 )
-        self.lin3 = Linear(-1, extended_lat_size )
+        self.conv = GraphConv( extended_lat_size , extended_lat_size * 8 )
+        self.conv2 = GraphConv( extended_lat_size * 8 , extended_lat_size * 8 )
+        self.conv3 = GraphConv( extended_lat_size * 8 , extended_lat_size * 8 )
+        self.lin1 = Linear(-1, extended_lat_size*4 )
+        self.lin2 = Linear(-1, extended_lat_size )
 
     def dropout_node_min(self, edge_index, batch_vector=None, p = 0.5, num_nodes = None, min_node=3, training = True):
 
@@ -168,6 +174,7 @@ class PatternEncoder(torch.nn.Module):
 
         x = self.conv(x, edge_index).relu()
         x = self.conv2(x, edge_index).relu()
+        x = self.conv3(x, edge_index).relu()
 
         #second part of dropout
         #x = x[node_mask]
@@ -175,58 +182,14 @@ class PatternEncoder(torch.nn.Module):
         #    batch_vector = batch_vector[node_mask]
 
         x = global_mean_pool(x, batch_vector)
-        x = self.lin1(x).relu()
-        x = self.lin2(x).relu()
-        x = self.lin22(x).relu()
-        x = self.lin23(x).relu()
-        x = self.lin3(x)
+        #x = self.lin1(x).relu()
+        #x = self.lin2(x).relu()
+        #x = self.lin22(x).relu()
+        #x = self.lin1(x).relu()
+        x = self.lin2(x)
         x = torch.squeeze(x)
         x = x.flatten()  #to come back to the bached format from pygeometric
         return x
-
-
-
-
-#class GCNEncoder(torch.nn.Module):
-#    def __init__(self, in_channels, out_channels):
-#        super().__init__()
-#        self.conv1 = GCNConv(in_channels, 2 * out_channels)
-#        self.conv2 = GCNConv(2 * out_channels, out_channels)
-#
-#    def forward(self, x, edge_index):
-#        x = self.conv1(x, edge_index).relu()
-#        return self.conv2(x, edge_index)
-
-
-class VariationalGCNEncoder(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv1 = GCNConv(in_channels, 2 * out_channels)
-        self.conv_mu = GCNConv(2 * out_channels, out_channels)
-        self.conv_logstd = GCNConv(2 * out_channels, out_channels)
-
-    def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index).relu()
-        return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
-
-
-class LinearEncoder(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv = GCNConv(in_channels, out_channels)
-
-    def forward(self, x, edge_index):
-        return self.conv(x, edge_index)
-
-
-class VariationalLinearEncoder(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv_mu = GCNConv(in_channels, out_channels)
-        self.conv_logstd = GCNConv(in_channels, out_channels)
-
-    def forward(self, x, edge_index):
-        return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 
 
 
@@ -286,7 +249,7 @@ class LineTrainer():
         mse_annealing = kl_annealing
         mse_weight = 1 #1 - max(0.5, min( (epoch -1200) * mse_annealing, 1 ) ) + 0.5
 
-
+        #ToDo: kld_loss braucht das ein batch mean oder so?
         kld_loss = torch.mean(-0.5 * (1 + logvar - mu ** 2 - logvar.exp()))
         loss = (mse_weight * lossMSE) + (kl_weight * beta_norm * kld_loss)
 
@@ -341,7 +304,7 @@ class LineTrainer():
 
 
             # Averaging out loss over entire batch
-            running_loss /= len(self.loader.sampler)
+            running_loss /= len(self.loader)
 
             #if epoch > 1400 and running_loss<200:
                 #self.scheduler.step(running_loss)
@@ -359,9 +322,8 @@ class LineTrainer():
             for d in range(1,len(loss_list)):
                 diff = diff + abs(loss_list[d] - loss_list[d-1])
 
-            print("total", diff)
-            if running_loss < 0.1:
-                break
+          
+            
             
             if epoch > (1/self.kl_annealing + self.epoch_training_offset):
                 if running_loss < min_loss:
@@ -414,7 +376,11 @@ class LineTrainer():
         """
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
-        return eps * std + mu
+        z = eps * std + mu
+        if z.size(0) == 1:
+            z = z.squeeze(0)
+        #print("reparameterize", z.size(), z)
+        return z
 
     def extractOriginLineVectors(self):
         self.model.eval()
@@ -561,7 +527,7 @@ class PatternTrainer():
 
 
 
-    def trainModel(self):
+    def trainModel(self, progress_callback=None):
         self.model.train()
         criterion = torch.nn.MSELoss(reduction='sum')
 
@@ -575,12 +541,7 @@ class PatternTrainer():
 
             #for train_data in self.dataset:
             for train_data in self.loader:
-
                 out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch)
-                #print(train_data.x[2,:])
-                #print(train_data.x.size())
-                #print(out[1:14])
-                #print(train_data.y.size())
 
 
                 #loss = criterion(out, train_data.y)
@@ -594,19 +555,21 @@ class PatternTrainer():
                
 
 
-
-            running_loss /= len(self.loader.sampler)
+            #ToDo: num_graphs auch beim line training?
+            running_loss /= len(self.loader)
             self.scheduler.step(running_loss)
 
 
-            print("Epoch:", epoch, "Loss:", running_loss)
+            print("Epoch:", epoch, "Loss:", running_loss, "sampler", len(self.loader))
             avg_epoch_loss += running_loss
 
 
-            if epoch % 100 == 0:
+            if epoch % 50 == 0:
                 torch.save(self.model.state_dict(), self.model_path)
                 print("saving...", "Epoch:", epoch, "Loss:", avg_epoch_loss/100, "current loss:", running_loss)
                 avg_epoch_loss = 0
+                if progress_callback:
+                    progress_callback(self.name)
 
         torch.save(self.model.state_dict(), self.model_path)
         
@@ -623,7 +586,7 @@ class PatternTrainer():
         vecLoss = torch.nn.MSELoss(reduction='mean')(resVec, testVec)
        
         #ToDo: die gewichtung hier ist zufällig, finde eine bessere
-        return posLoss*50 + vecLoss
+        return posLoss*10 + vecLoss
     
     def getDatasetSample(self):
         self.model.eval()
@@ -633,13 +596,11 @@ class PatternTrainer():
     def generate(self):
         #wir haben hier noch nie probiert mit einem richtigen random z was zu generieren, oder?
         self.model.eval()
-        print("dataset info", len(self.dataset), self.dataset.level)
+        #print("dataset info", len(self.dataset), self.dataset.level)
 
         data = self.dataset.get_random_original_item()
        
         z = self.model.forward(data.x, data.edge_index)
-        print(z)
-        print(data.y)
         return z, data.y, data.x
 
     def predict(self, x, edge_index):

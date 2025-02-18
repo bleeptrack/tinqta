@@ -207,7 +207,13 @@ def new_pattern(data):
     gh.save_pattern_training_data(data['name'])
 
     pt = PatternTrainer(data['name'])
-    pt.trainModel()
+    pt.trainModel(send_progress_pattern)
+
+def send_progress_pattern(name):
+    
+    data = {'name': name}
+    print("sending progress pattern", data)
+    sample_pattern(data)
 
 
 # @socketio.on('sample pattern')
@@ -284,7 +290,7 @@ def generate_pattern(data):
         pt = PatternTrainer(data['name'])
         gh.clear()
         gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
-        gh.init_random(5)
+        gh.init_random(20)
         
 
         info = {}
