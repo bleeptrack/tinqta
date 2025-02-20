@@ -132,7 +132,6 @@ class PatternEncoder(torch.nn.Module):
         self.conv = GraphConv( extended_lat_size , extended_lat_size * 8 )
         self.conv2 = GraphConv( extended_lat_size * 8 , extended_lat_size * 8 )
         self.conv3 = GraphConv( extended_lat_size * 8 , extended_lat_size * 8 )
-        self.lin1 = Linear(-1, extended_lat_size*4 )
         self.lin2 = Linear(-1, extended_lat_size )
 
     def dropout_node_min(self, edge_index, batch_vector=None, p = 0.5, num_nodes = None, min_node=3, training = True):
@@ -171,7 +170,6 @@ class PatternEncoder(torch.nn.Module):
 
         #dropout
         #edge_index, edge_mask, node_mask = self.dropout_node_min(edge_index, batch_vector, p=config['node_dropout'], training=self.training)
-
         x = self.conv(x, edge_index).relu()
         x = self.conv2(x, edge_index).relu()
         x = self.conv3(x, edge_index).relu()
@@ -598,7 +596,7 @@ class PatternTrainer():
         self.model.eval()
         #print("dataset info", len(self.dataset), self.dataset.level)
 
-        data = self.dataset.get_random_original_item()
+        data = self.dataset.get_random_item()
        
         z = self.model.forward(data.x, data.edge_index)
         return z, data.y, data.x

@@ -82,29 +82,6 @@ class GraphDatasetHandler():
 
         if self.level == "pattern":
 
-            if self.config['create_pattern_combinations']:
-                print("creating pattern combinations")
-                for data in self.original_data:
-                    n = data.num_nodes
-                    print("n", n)
-                    # Create all possible boolean combinations for each node
-                    
-                    combinations = torch.tensor(list(product([False, True], repeat=n)))
-                    # Remove the combination that's all False
-                    combinations = combinations[combinations.any(dim=1)]
-                    # Create new data objects for each combination
-                    for combo in combinations:
-                        #print("combo", combo)
-                        sub_data = data.subgraph(combo)
-                        sub_data.y = data.y.clone() #overwrite possible changes from subgraph
-                        self.recalculate_center_point(sub_data)
-                        #ToDo recalculate center point?
-                        self.data.append(sub_data)
-
-                print("created", len(self.data), "combinations")
-
-                    
-
 
             if self.config['jitter_pattern'] > 0 :
                 print("jittering pattern data")
@@ -124,7 +101,6 @@ class GraphDatasetHandler():
                         self.data.append(new_data)
 
             
-        print()
 
         print("SAVING DATA", len(self.data), "originals:", len(self.original_data))
         torch.save(self, osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'-'+ self.level +'.pt'))
@@ -138,14 +114,14 @@ class GraphDatasetHandler():
     def __setitem__(self, index, value):
         self.data[index] = value
 
-    def recalculate_center_point(self, data):
-        pos = torch.mean(data.x[:, 0:2], dim=0)
-        data.center_point['x'] += pos[0].item()
-        data.center_point['y'] += pos[1].item()
-        #print("moved centerpoint", pos)
+
 
     def get_random_original_item(self):
         return self.original_data[random.randint(0, len(self.original_data)-1)]
+    
+    def get_random_item(self):
+        return self.data[random.randint(0, len(self.data)-1)]
+        #return self.data[26]
 
     @property
     def num_features(self):
@@ -200,6 +176,39 @@ class GraphHandler:
             self.lines.append(line)
             #lines.append(prediction2obj(line, lineTrainer))
 
+    def init_original(self, lineTrainer=None, patternTrainer=None):
+        if lineTrainer is None:
+            lineTrainer = self.line_trainer
+        if patternTrainer is None:
+            patternTrainer = self.pattern_trainer
+
+        data = patternTrainer.dataset.get_random_item()
+        self.test_data = data
+        #pred = self.decompose_node(data.x)
+        #self.lines.append(pred)
+        ground_truth = self.decompose_node(data.y)
+        ground_truth.update_position_from_reference({"x":0, "y":0})
+        self.lines.append(ground_truth)
+        for i in range(data.x.size()[0]):
+            n = self.decompose_node(data.x[i])
+            n.update_position_from_reference({"x":0, "y":0})
+            print("n", n)
+            self.lines.append(n)
+
+        x, edge_index, ground_truth, center_point = self.sample_graph(0)
+        print("centerpoint", center_point, data.center_point)
+        
+
+            
+        diff = torch.abs(data.x - x)
+        print("Difference between data.x and x:")
+        print(diff)
+        print("Max difference:", torch.max(diff))
+        print("Mean difference:", torch.mean(diff))
+        
+
+        
+
         
 
     def calculate_gen_step(self):
@@ -208,19 +217,23 @@ class GraphHandler:
         adation_rate = 0.005
 
 
-        for i in range(len(self.lines)):
-            x, edge_index, ground_truth, center_point = self.sample_graph(i)
+       
+        x, edge_index, ground_truth, center_point = self.sample_graph(0)
+        
+        if x is not None:
             z = self.pattern_trainer.predict(x, edge_index)
-            print("z", z)
-            print("ground_truth", ground_truth)
-            adapted_z = ground_truth + adation_rate * (z - ground_truth)
-            print("adapted_z", adapted_z)
-            line = self.decompose_node(adapted_z)
+            #adapted_z = ground_truth + adation_rate * (z - ground_truth)
+            #print("adapted_z", adapted_z)
+            line = self.decompose_node(z)
             line.update_position_from_reference(center_point)
+
             self.gen_step.append(line)
-            print("center_point", center_point)
-            print("line", self.lines[i])
-            print("gen", self.gen_step[i])
+
+        o_z = self.pattern_trainer.predict(self.test_data.x, self.test_data.edge_index)
+        o_line = self.decompose_node(o_z)
+        o_line.update_position_from_reference(center_point)
+        self.gen_step.append(o_line)
+           
 
         return self.gen_step
     
@@ -279,7 +292,7 @@ class GraphHandler:
         if latent_name is None:
             latent_name = self.pattern_trainer.name
 
-        if pred_id in ids:
+        if pred_id is not None and pred_id in ids:
             print("removed prediction id from ids", pred_id, ids)
             ids = ids[ids != pred_id]
 
@@ -295,18 +308,16 @@ class GraphHandler:
         centers_X = [self.lines[i].position['x'] for i in ids]
         centers_Y = [self.lines[i].position['y'] for i in ids]
         center_point = { "x": sum(centers_X)/len(centers_X), "y": sum(centers_Y)/len(centers_Y) }
-        print("center_point calculated", center_point)
 
         for i in ids:
             hid = self.assemble_node_hidden_state(i, center_point, latent_name)
-            print("hid", hid)
             hidden_states.append(hid)
 
         if pred_id is not None:
             ground_truth = self.assemble_node_hidden_state(pred_id, center_point, latent_name)
         else:
             ground_truth = None
-            raise ValueError("no prediction id given. is this correct?", pred_id)
+            #raise ValueError("no prediction id given. is this correct?", pred_id)
 
         #fully connect der nähesten k nodes
         connections = torch.combinations(torch.arange(0,len(ids), dtype=torch.int64))
@@ -339,15 +350,13 @@ class GraphHandler:
         
         rot = line.rotation
         scale = line.scale
-        print(lat_vec.size(), delta_posX, delta_posY, rot, scale)
-        print(lat_vec)
 
         
         return torch.cat( (torch.tensor( [delta_posX, delta_posY, rot, scale], dtype=torch.float), lat_vec), 0)
 
 
     
-    def sample_graph(self, pred_id, latent_name=None, max_dist=config['max_dist']):
+    def sample_graph(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False):
         if latent_name is None:
             latent_name = self.pattern_trainer.name
 
@@ -361,14 +370,50 @@ class GraphHandler:
         current = current[not_zero]
         ids = current_ids[not_zero]
 
+        if include_pred_id:
+            ids = torch.cat([torch.tensor([pred_id]), ids])
+            pred_id = None
+
         if len(ids) == 0:
             return None, None, None, None
         
         x, edge_index, ground_truth, center_point = self.create_pattern_graph(pred_id, ids, latent_name)
 
         return x, edge_index, ground_truth, center_point
+    
 
+    def sample_graph_with_combinations(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False):
+        if latent_name is None:
+            latent_name = self.pattern_trainer.name
 
+        dists = self.get_distance_matrix()
+        dists = dists * (dists < max_dist)
+        sorted_dists, indices = torch.sort(dists)
+
+        current = sorted_dists[pred_id]
+        current_ids = indices[pred_id]
+        not_zero = current!=0
+        current = current[not_zero]
+        ids = current_ids[not_zero]
+
+        if include_pred_id:
+            ids = torch.cat([torch.tensor([pred_id]), ids])
+            pred_id = None
+
+        if len(ids) == 0:
+            return None, None, None, None
+        
+        combinations = torch.tensor(list(product([False, True], repeat=len(ids))))
+        combinations = combinations[combinations.any(dim=1)]
+
+        data_list = []
+
+        for combo in combinations:
+            combo_ids = ids[combo]
+            x, edge_index, ground_truth, center_point = self.create_pattern_graph(pred_id, combo_ids, latent_name)
+            data_list.append((x, edge_index, ground_truth, center_point))
+
+        return data_list
     
     def save_pattern_training_data(self, latent_name=None, name=None):
         if latent_name is None:
@@ -380,12 +425,17 @@ class GraphHandler:
         data_list = []
 
         for i in range(len(self.lines)):
-            x, edge_idx, ground_truth, center_point = self.sample_graph(i, latent_name)  
-            
-            if x is not None:
-                data = Data(x=x, edge_index=edge_idx, y=ground_truth, center_point=center_point)
-                print("data", data, data.x)
-                data_list.append(data)
+            if config['create_pattern_combinations']:
+                x_list = self.sample_graph_with_combinations(i, latent_name)
+                for x in x_list:
+                    data = Data(x=x[0], edge_index=x[1], y=x[2], center_point=x[3])
+                    data_list.append(data)
+            else:
+                x, edge_idx, ground_truth, center_point = self.sample_graph(i, latent_name)  
+                
+                if x is not None:
+                    data = Data(x=x, edge_index=edge_idx, y=ground_truth, center_point=center_point)
+                    data_list.append(data)
                 
         print("saving dataset of length ", len(data_list))
         pattern_data = GraphDatasetHandler(name, "pattern")
