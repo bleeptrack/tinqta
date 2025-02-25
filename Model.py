@@ -134,15 +134,17 @@ class PatternEncoder(torch.nn.Module):
         self.lin = Linear(-1, extended_lat_size)
         
 
-    def delaunay_pool(self, x, edge_index, batch_vector):
-        print(x.requires_grad) 
-        print("x init", x.size())
+    def delaunay_pool(self, x, edge_index, batch_vector=None):
 
         num_nodes = x.size(0)
 
+        if batch_vector is None:
+            batch_vector = torch.zeros(num_nodes, dtype=torch.long, device=x.device)
+
+        
+
         # Convert edge_index to adjacency list format, ignoring self-loops
         edge_list = edge_index.t().tolist()
-        print("edge_list", edge_list)
         adj = [[] for _ in range(num_nodes)]
         for u, v in edge_list:
             if u != v:  # Skip self-loops
@@ -160,8 +162,6 @@ class PatternEncoder(torch.nn.Module):
                 if w != u and w != v and w in adj[u] and batch_vector[w] == batch_vector[u]:
                     triangle = tuple(sorted([u,v,w]))
                     triangles.add(triangle)
-
-        print("triangles", triangles)
 
         # Create new features and batch assignments for collapsed triangles
         new_features = []
@@ -183,7 +183,6 @@ class PatternEncoder(torch.nn.Module):
             if i not in processed_nodes:
                 new_features.append(x[i])
                 new_batch.append(batch_vector[i])
-                print("not part of any triangle", i)
 
         # Convert to tensor format
         new_x = torch.stack(new_features)
@@ -193,29 +192,31 @@ class PatternEncoder(torch.nn.Module):
         sorted_indices = torch.argsort(new_batch_vector)
         new_x = new_x[sorted_indices]
         new_batch_vector = new_batch_vector[sorted_indices]
+
+        # Collect edges from all batches
+        edge_list = []
+        start_idx = 0
         
-        # Return dummy edge_index since it will be rebuilt later
-        dummy_edge_index = torch.empty((2, 0), device=edge_index.device)
-
-        print("new_x shape:", new_x.shape)
-        print("dummy_edge_index shape:", dummy_edge_index)
-        print("new_batch_vector shape:", new_batch_vector)
-
         for batch in torch.unique(new_batch_vector):
             batch_mask = new_batch_vector == batch
             batch_pos = new_x[batch_mask, 0:2].detach()
-            print("\nProcessing batch:", batch)
-            print("Number of points in batch:", len(batch_pos))
-            print("Points:", batch_pos)
+            num_nodes = len(batch_pos)
             
             data = T.Delaunay()(Data(pos=batch_pos))
             if data.face is not None:
                 data = T.FaceToEdge()(data)
-            print("Created edges:", data.edge_index.t().tolist())
-            print("Number of edges:", data.edge_index.shape[1])
+            batch_edges = data.edge_index + start_idx
+            edge_list.append(batch_edges)
             
+            start_idx += num_nodes
 
-        return new_x, dummy_edge_index, new_batch_vector
+        # Combine all edges
+        if edge_list:
+            edge_index = torch.cat(edge_list, dim=1)
+        else:
+            edge_index = torch.empty((2, 0), device=x.device)
+
+        return new_x, edge_index, new_batch_vector
     
     
     def readout(self, x, batch_vector):
@@ -223,8 +224,7 @@ class PatternEncoder(torch.nn.Module):
 
 
     def forward(self, x, edge_index, batch_vector=None):
-        print(batch_vector)
-        print(x[0:10,0])
+        
         #x = self.conv(x, edge_index)
         x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
         x = self.readout(x, batch_vector)
@@ -614,7 +614,7 @@ class PatternTrainer():
         torch.save(self.model.state_dict(), self.model_path)
         
     def loss_function(self, out, ground_truth):
-        res = torch.unflatten(out, 0, (-1, 4+config['latent_size']))
+        res = out #torch.unflatten(out, 0, (-1, 4+config['latent_size']))
         test = torch.unflatten(ground_truth, 0, (-1, 4+config['latent_size']))
         
         resPos = res[:, 0:4]

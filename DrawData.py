@@ -6,6 +6,7 @@ from torch_geometric.nn import GAE, GCNConv
 from config import config
 from line import Line
 from itertools import product
+import torch_geometric.transforms as T
 import random
 
 
@@ -195,12 +196,12 @@ class GraphHandler:
             print("n", n)
             self.lines.append(n)
 
-        x, edge_index, ground_truth, center_point = self.sample_graph(0)
-        print("centerpoint", center_point, data.center_point)
+        data2  = self.sample_graph(0)
+        print("centerpoint", data2.center_point, data.center_point)
         
 
             
-        diff = torch.abs(data.x - x)
+        diff = torch.abs(data.x - data2.x)
         print("Difference between data.x and x:")
         print(diff)
         print("Max difference:", torch.max(diff))
@@ -218,20 +219,20 @@ class GraphHandler:
 
 
        
-        x, edge_index, ground_truth, center_point = self.sample_graph(0)
+        data = self.sample_graph(0)
         
-        if x is not None:
-            z = self.pattern_trainer.predict(x, edge_index)
+        if data is not None:
+            z = self.pattern_trainer.predict(data.x, data.edge_index)
             #adapted_z = ground_truth + adation_rate * (z - ground_truth)
             #print("adapted_z", adapted_z)
             line = self.decompose_node(z)
-            line.update_position_from_reference(center_point)
+            line.update_position_from_reference(data.center_point)
 
             self.gen_step.append(line)
 
         o_z = self.pattern_trainer.predict(self.test_data.x, self.test_data.edge_index)
         o_line = self.decompose_node(o_z)
-        o_line.update_position_from_reference(center_point)
+        o_line.update_position_from_reference(data.center_point)
         self.gen_step.append(o_line)
            
 
@@ -296,18 +297,12 @@ class GraphHandler:
             print("removed prediction id from ids", pred_id, ids)
             ids = ids[ids != pred_id]
 
-        
-        
-        # x_max_coord = max([self.lines[i].get_absoulte_maxX() for i in ids])
-        # x_min_coord = min([self.lines[i].get_absoulte_minX() for i in ids])
-        # y_max_coord = max([self.lines[i].get_absoulte_maxY() for i in ids])
-        # y_min_coord = min([self.lines[i].get_absoulte_minY() for i in ids])
-        # print(f"center: ({x_min_coord}, {y_min_coord}), ({x_max_coord}, {y_max_coord})")
-        # center_point = { "x": (x_max_coord+x_min_coord)/2, "y": (y_max_coord+y_min_coord)/2 }
-
         centers_X = [self.lines[i].position['x'] for i in ids]
         centers_Y = [self.lines[i].position['y'] for i in ids]
         center_point = { "x": sum(centers_X)/len(centers_X), "y": sum(centers_Y)/len(centers_Y) }
+
+        #position of each node
+        pos = torch.tensor([[self.lines[i].position['x'],self.lines[i].position['y']] for i in ids], dtype=torch.float)
 
         for i in ids:
             hid = self.assemble_node_hidden_state(i, center_point, latent_name)
@@ -320,12 +315,22 @@ class GraphHandler:
             #raise ValueError("no prediction id given. is this correct?", pred_id)
 
         #fully connect der nähesten k nodes
-        connections = torch.combinations(torch.arange(0,len(ids), dtype=torch.int64))
+        #connections = torch.combinations(torch.arange(0,len(ids), dtype=torch.int64))
+        #edge_index = torch.tensor(connections, dtype=torch.long).t().contiguous()
 
-        edge_index = torch.tensor(connections, dtype=torch.long).t().contiguous()
+        
         x = torch.stack(hidden_states, dim=0) #vllt nochmal checken ob der jetzt "richtig rum" ist
 
-        return x, edge_index, ground_truth, center_point
+
+        data = Data(x=x, y=ground_truth, center_point=center_point, pos=pos)
+        
+        data = T.Delaunay()(data)
+        if data.face is not None:
+            data = T.FaceToEdge()(data)
+        #transform = T.Compose([T.ToUndirected()])
+        #data = transform(data)
+        
+        return data
     
 
     
@@ -356,7 +361,7 @@ class GraphHandler:
 
 
     
-    def sample_graph(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False):
+    def sample_graph(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False, with_combinations=False):
         if latent_name is None:
             latent_name = self.pattern_trainer.name
 
@@ -375,45 +380,23 @@ class GraphHandler:
             pred_id = None
 
         if len(ids) == 0:
-            return None, None, None, None
+            return None
         
-        x, edge_index, ground_truth, center_point = self.create_pattern_graph(pred_id, ids, latent_name)
+        if with_combinations:
+            combinations = torch.tensor(list(product([False, True], repeat=len(ids))))
+            combinations = combinations[combinations.any(dim=1)]
 
-        return x, edge_index, ground_truth, center_point
+            data_list = []
+
+            for combo in combinations:
+                combo_ids = ids[combo]
+                data_list.append(self.create_pattern_graph(pred_id, combo_ids, latent_name))
+            return data_list
+
+        else:    
+
+            return self.create_pattern_graph(pred_id, ids, latent_name)
     
-
-    def sample_graph_with_combinations(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False):
-        if latent_name is None:
-            latent_name = self.pattern_trainer.name
-
-        dists = self.get_distance_matrix()
-        dists = dists * (dists < max_dist)
-        sorted_dists, indices = torch.sort(dists)
-
-        current = sorted_dists[pred_id]
-        current_ids = indices[pred_id]
-        not_zero = current!=0
-        current = current[not_zero]
-        ids = current_ids[not_zero]
-
-        if include_pred_id:
-            ids = torch.cat([torch.tensor([pred_id]), ids])
-            pred_id = None
-
-        if len(ids) == 0:
-            return None, None, None, None
-        
-        combinations = torch.tensor(list(product([False, True], repeat=len(ids))))
-        combinations = combinations[combinations.any(dim=1)]
-
-        data_list = []
-
-        for combo in combinations:
-            combo_ids = ids[combo]
-            x, edge_index, ground_truth, center_point = self.create_pattern_graph(pred_id, combo_ids, latent_name)
-            data_list.append((x, edge_index, ground_truth, center_point))
-
-        return data_list
     
     def save_pattern_training_data(self, latent_name=None, name=None):
         if latent_name is None:
@@ -426,16 +409,16 @@ class GraphHandler:
 
         for i in range(len(self.lines)):
             if config['create_pattern_combinations']:
-                x_list = self.sample_graph_with_combinations(i, latent_name)
-                for x in x_list:
-                    data = Data(x=x[0], edge_index=x[1], y=x[2], center_point=x[3])
-                    data_list.append(data)
+                x_list = self.sample_graph(i, latent_name, with_combinations=True)
+                if x_list is not None:
+                    data_list.extend(x_list)
             else:
-                x, edge_idx, ground_truth, center_point = self.sample_graph(i, latent_name)  
-                
-                if x is not None:
-                    data = Data(x=x, edge_index=edge_idx, y=ground_truth, center_point=center_point)
+                data = self.sample_graph(i, latent_name)  
+                if data is not None:
                     data_list.append(data)
+
+        
+            
                 
         print("saving dataset of length ", len(data_list))
         pattern_data = GraphDatasetHandler(name, "pattern")
