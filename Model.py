@@ -1,4 +1,3 @@
-
 import os.path as osp
 from functools import reduce
 import math
@@ -17,6 +16,7 @@ from config import config
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 from torch_geometric.utils import subgraph
+from torch_geometric.data import Data
 import numpy as np
 
 
@@ -129,64 +129,106 @@ class PatternEncoder(torch.nn.Module):
 
         extended_lat_size = int( config['latent_size'] + 4 ) # +4 fuer posx, posy, scale, rot
 
-        self.conv = GraphConv( extended_lat_size , extended_lat_size * 8 )
-        self.conv2 = GraphConv( extended_lat_size * 8 , extended_lat_size * 8 )
-        self.conv3 = GraphConv( extended_lat_size * 8 , extended_lat_size * 8 )
-        self.lin2 = Linear(-1, extended_lat_size )
+        self.conv = GCNConv( extended_lat_size , extended_lat_size * 8 )
 
-    def dropout_node_min(self, edge_index, batch_vector=None, p = 0.5, num_nodes = None, min_node=3, training = True):
+        self.lin = Linear(-1, extended_lat_size)
+        
 
+    def delaunay_pool(self, x, edge_index, batch_vector):
+        print(x.requires_grad) 
+        print("x init", x.size())
 
-        num_nodes = maybe_num_nodes(edge_index, num_nodes)
+        num_nodes = x.size(0)
 
-        if not training or p == 0.0:
-            node_mask = edge_index.new_ones(num_nodes, dtype=torch.bool)
-            edge_mask = edge_index.new_ones(edge_index.size(1), dtype=torch.bool)
-            return edge_index, edge_mask, node_mask
+        # Convert edge_index to adjacency list format, ignoring self-loops
+        edge_list = edge_index.t().tolist()
+        print("edge_list", edge_list)
+        adj = [[] for _ in range(num_nodes)]
+        for u, v in edge_list:
+            if u != v:  # Skip self-loops
+                adj[u].append(v)
+                adj[v].append(u)
 
+        # Find all triangles
+        triangles = set()
+        for u, v in edge_list:
+            if u == v:  # Skip self-loops
+                continue
+            if batch_vector[u] != batch_vector[v]:
+                continue
+            for w in adj[v]:
+                if w != u and w != v and w in adj[u] and batch_vector[w] == batch_vector[u]:
+                    triangle = tuple(sorted([u,v,w]))
+                    triangles.add(triangle)
 
-        if batch_vector is None:
-            batch_vector = torch.zeros(num_nodes)
+        print("triangles", triangles)
 
-        count = torch.bincount(batch_vector)
-        probs = []
-        for i in range(count.size(0)):
-            prob = torch.cat( (torch.rand( count[i]-min_node, device=edge_index.device), torch.ones(min_node)), 0)
-            r=torch.randperm(prob.size(0))
-            prob=prob[r]
-            probs.append(prob)
+        # Create new features and batch assignments for collapsed triangles
+        new_features = []
+        new_batch = []
+        processed_nodes = set()
 
-        prob = torch.cat(probs, 0)
-        node_mask = prob > p
-        edge_index, _, edge_mask = subgraph(node_mask, edge_index,
-                                            num_nodes=num_nodes,
-                                            return_edge_mask=True)
-        return edge_index, edge_mask, node_mask
+        # Process triangles
+        for triangle in triangles:
+            # Average features of triangle nodes
+            triangle_features = torch.mean(x[list(triangle), :], dim=0)
+            new_features.append(triangle_features)
+            new_batch.append(batch_vector[triangle[0]])  # Use batch of first node
+            
+            for node in triangle:
+                processed_nodes.add(node)
+
+        # Handle remaining nodes that weren't part of any triangle
+        for i in range(num_nodes):
+            if i not in processed_nodes:
+                new_features.append(x[i])
+                new_batch.append(batch_vector[i])
+                print("not part of any triangle", i)
+
+        # Convert to tensor format
+        new_x = torch.stack(new_features)
+        new_batch_vector = torch.tensor(new_batch, device=x.device)
+        
+        # Sort based on batch vector
+        sorted_indices = torch.argsort(new_batch_vector)
+        new_x = new_x[sorted_indices]
+        new_batch_vector = new_batch_vector[sorted_indices]
+        
+        # Return dummy edge_index since it will be rebuilt later
+        dummy_edge_index = torch.empty((2, 0), device=edge_index.device)
+
+        print("new_x shape:", new_x.shape)
+        print("dummy_edge_index shape:", dummy_edge_index)
+        print("new_batch_vector shape:", new_batch_vector)
+
+        for batch in torch.unique(new_batch_vector):
+            batch_mask = new_batch_vector == batch
+            batch_pos = new_x[batch_mask, 0:2].detach()
+            print("\nProcessing batch:", batch)
+            print("Number of points in batch:", len(batch_pos))
+            print("Points:", batch_pos)
+            
+            data = T.Delaunay()(Data(pos=batch_pos))
+            if data.face is not None:
+                data = T.FaceToEdge()(data)
+            print("Created edges:", data.edge_index.t().tolist())
+            print("Number of edges:", data.edge_index.shape[1])
+            
+
+        return new_x, dummy_edge_index, new_batch_vector
+    
+    
+    def readout(self, x, batch_vector):
+        return torch.cat([global_mean_pool(x, batch_vector), global_add_pool(x, batch_vector)], dim=-1)
 
 
     def forward(self, x, edge_index, batch_vector=None):
-        #encode
-        #x = self.conv1(x, edge_index).relu()
-
-        #dropout
-        #edge_index, edge_mask, node_mask = self.dropout_node_min(edge_index, batch_vector, p=config['node_dropout'], training=self.training)
-        x = self.conv(x, edge_index).relu()
-        x = self.conv2(x, edge_index).relu()
-        x = self.conv3(x, edge_index).relu()
-
-        #second part of dropout
-        #x = x[node_mask]
-        #if batch_vector is not None:
-        #    batch_vector = batch_vector[node_mask]
-
-        x = global_mean_pool(x, batch_vector)
-        #x = self.lin1(x).relu()
-        #x = self.lin2(x).relu()
-        #x = self.lin22(x).relu()
-        #x = self.lin1(x).relu()
-        x = self.lin2(x)
-        x = torch.squeeze(x)
-        x = x.flatten()  #to come back to the bached format from pygeometric
+        print(batch_vector)
+        print(x[0:10,0])
+        #x = self.conv(x, edge_index)
+        x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
+        x = self.readout(x, batch_vector)
+        x = self.lin(x)
         return x
 
 
