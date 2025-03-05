@@ -129,9 +129,12 @@ class PatternEncoder(torch.nn.Module):
 
         extended_lat_size = int( config['latent_size'] + 4 ) # +4 fuer posx, posy, scale, rot
 
-        self.conv = GCNConv( extended_lat_size , extended_lat_size * 8 )
+        self.conv = GCNConv( extended_lat_size , extended_lat_size )
+        self.conv2 = GCNConv( -1 , extended_lat_size )
+        self.conv3 = GCNConv( -1 , extended_lat_size )
 
-        self.lin = Linear(-1, extended_lat_size)
+        self.lin = Linear(-1, extended_lat_size * 8)
+        self.lin2 = Linear(-1, extended_lat_size)
         
 
     def delaunay_pool(self, x, edge_index, batch_vector=None):
@@ -225,10 +228,32 @@ class PatternEncoder(torch.nn.Module):
 
     def forward(self, x, edge_index, batch_vector=None):
         
-        #x = self.conv(x, edge_index)
-        x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
-        x = self.readout(x, batch_vector)
+        pos = x[:, 0:2]
+        x = self.conv(x, edge_index)
+        combined = torch.cat([pos, x], dim=-1)
+        x, edge_index, batch_vector = self.delaunay_pool(combined, edge_index, batch_vector)
+        readout1 = self.readout(x, batch_vector)
+
+        pos2 = x[:, 0:2]
+        x = self.conv2(x, edge_index)
+        combined2 = torch.cat([pos2, x], dim=-1)
+        x, edge_index, batch_vector = self.delaunay_pool(combined2, edge_index, batch_vector)
+        readout2 = self.readout(x, batch_vector)
+
+        pos3 = x[:, 0:2]
+        x = self.conv3(x, edge_index)
+        combined3 = torch.cat([pos3, x], dim=-1)
+        x, edge_index, batch_vector = self.delaunay_pool(combined3, edge_index, batch_vector)
+        readout3 = self.readout(x, batch_vector)
+
+        print(pos, pos2, pos3)
+        die()
+
+
+        x = torch.cat([readout1, readout2, readout3], dim=-1)
         x = self.lin(x)
+        x = self.lin2(x)
+        x = x.flatten()
         return x
 
 
@@ -582,7 +607,7 @@ class PatternTrainer():
             #for train_data in self.dataset:
             for train_data in self.loader:
                 out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch)
-
+                
 
                 #loss = criterion(out, train_data.y)
                 loss = self.loss_function(out, train_data.y)
@@ -614,7 +639,7 @@ class PatternTrainer():
         torch.save(self.model.state_dict(), self.model_path)
         
     def loss_function(self, out, ground_truth):
-        res = out #torch.unflatten(out, 0, (-1, 4+config['latent_size']))
+        res = torch.unflatten(out, 0, (-1, 4+config['latent_size']))
         test = torch.unflatten(ground_truth, 0, (-1, 4+config['latent_size']))
         
         resPos = res[:, 0:4]
@@ -626,7 +651,7 @@ class PatternTrainer():
         vecLoss = torch.nn.MSELoss(reduction='mean')(resVec, testVec)
        
         #ToDo: die gewichtung hier ist zufällig, finde eine bessere
-        return posLoss*10 + vecLoss
+        return posLoss + vecLoss
     
     def getDatasetSample(self):
         self.model.eval()
