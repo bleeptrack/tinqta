@@ -386,7 +386,7 @@ class GraphHandler:
         
         if with_combinations:
             combinations = torch.tensor(list(product([False, True], repeat=len(ids))))
-            combinations = combinations[combinations.sum(dim=1) <= 3]
+            #combinations = combinations[combinations.sum(dim=1) <= 3]
             combinations = combinations[combinations.any(dim=1)]
 
             data_list = []

@@ -132,11 +132,13 @@ class PatternEncoder(torch.nn.Module):
         self.extended_lat_size = int( config['latent_size'] + 4 ) # +4 fuer posx, posy, scale, rot
         input_size = self.extended_lat_size * 2
 
-        self.conv = GCNConv( self.extended_lat_size , self.extended_lat_size )
-        self.conv2 = GCNConv( -1 , self.extended_lat_size )
-        self.conv3 = GCNConv( -1 , self.extended_lat_size )
-
         hidden_size = self.extended_lat_size * 32
+
+        self.conv = GCNConv( self.extended_lat_size , hidden_size )
+        self.conv2 = GCNConv( -1 , hidden_size )
+        self.conv3 = GCNConv( -1 , hidden_size )
+
+        
 
 
         self.pos = Linear(-1, 2)
@@ -270,6 +272,7 @@ class PatternEncoder(torch.nn.Module):
             sorted_indices = torch.argsort(vector_lengths)
 
             batch_features = batch_features[sorted_indices]
+            batch_features = batch_features[:2]
             # Flatten first dimension
             flattened = batch_features.flatten(0, 1)
             # Pad with zeros if necessary
@@ -282,50 +285,55 @@ class PatternEncoder(torch.nn.Module):
         new_batch_vector = unique_batches
             
         # Stack all flattened features
+        
         return torch.stack(flattened_features), new_batch_vector
 
     def forward(self, x, edge_index, batch_vector=None, target_pos=None):
+
+        x_face, _ = self.arrange_face(x, batch_vector)
         
-        #pos = x[:, 0:2]
-        #x = self.conv(x, edge_index)
-        #combined = torch.cat([pos, x], dim=-1)
-        #x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
-        #readout1 = self.readout(x, batch_vector)
+        pos = x[:, 0:2]
+        x = self.conv(x, edge_index).relu()
+        combined = torch.cat([pos, x], dim=-1)
+        x, edge_index, batch_vector = self.delaunay_pool(combined, edge_index, batch_vector)
+        readout1 = self.readout(x, batch_vector)
 
-        #pos2 = x[:, 0:2]
-        #x = self.conv2(x, edge_index)
-        #combined2 = torch.cat([pos2, x], dim=-1)
-        #x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
-        #readout2 = self.readout(x, batch_vector)
+        pos2 = x[:, 0:2]
+        x = self.conv2(x, edge_index).relu()
+        combined2 = torch.cat([pos2, x], dim=-1)
+        x, edge_index, batch_vector = self.delaunay_pool(combined2, edge_index, batch_vector)
+        readout2 = self.readout(x, batch_vector)
 
-        #pos3 = x[:, 0:2]
-        #x = self.conv3(x, edge_index)
-        #combined3 = torch.cat([pos3, x], dim=-1)
-        #x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
-        #readout3 = self.readout(x, batch_vector)
+        pos3 = x[:, 0:2]
+        x = self.conv3(x, edge_index).relu()
+        combined3 = torch.cat([pos3, x], dim=-1)
+        x, edge_index, batch_vector = self.delaunay_pool(combined3, edge_index, batch_vector)
+        readout3 = self.readout(x, batch_vector)
 
         #if self.training:
         #    if random.random() < 0.5:
         #        target_pos = None
 
         
-
+        initial_readout = torch.cat([readout1, readout2, readout3], dim=-1)
         
-        #x, batch_vector = self.arrange_face(x, batch_vector)
+        
         #x = self.readout(x, batch_vector)
 
         #initial_readout, batch_vector = self.arrange_face(x, batch_vector)
-        initial_readout = self.readout(x, batch_vector)
+        
         
         #x = self.conv(x, edge_index).relu()
         #readout1 = self.readout(x, batch_vector)
         
-        combined_readout = initial_readout
+        combined_readout = torch.cat([x_face, initial_readout], dim=-1)
 
-        pos = self.pos_hidden1(combined_readout).relu()
-        pos = self.pos_hidden2(pos).relu()
-        pos = self.pos(pos)
-        pos = target_pos if target_pos is not None else pos
+        #pos = self.pos_hidden1(combined_readout).relu()
+        #pos = self.pos_hidden2(pos).relu()
+        #pos = self.pos(pos)
+        #pos = target_pos if target_pos is not None else pos
+        pos = target_pos
+
 
         vec = self.vec_hidden1(torch.cat([pos, combined_readout], dim=-1)).relu()
         vec = self.vec_hidden2(vec).relu()
@@ -668,7 +676,7 @@ class PatternTrainer():
         if osp.exists(self.model_path):
             print("PATTERNMODEL EXISTS. LOADING...", self.model_path)
             self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu')))
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)
         self.scheduler = ReduceLROnPlateau(self.optimizer)
         
 
