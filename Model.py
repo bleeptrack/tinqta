@@ -9,8 +9,8 @@ import random
 import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.utils import dropout_node
-from torch_geometric.nn import GAE, VGAE, GCNConv,GraphConv, global_mean_pool, global_add_pool, Linear, TransformerConv,  SAGEConv, GCN
-from DrawData import GraphDatasetHandler
+from torch_geometric.nn import MLP, GAE, VGAE, GCNConv,GraphConv, global_mean_pool, global_add_pool, Linear, TransformerConv,  SAGEConv, GCN
+from DrawData import GraphDatasetHandler, GraphHandler
 from line import Line
 from config import config
 from torch_geometric.loader import DataLoader
@@ -127,14 +127,35 @@ class PatternEncoder(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, num_layers, out_channels):
         super().__init__()
 
-        extended_lat_size = int( config['latent_size'] + 4 ) # +4 fuer posx, posy, scale, rot
+        self.training_step = 0
 
-        self.conv = GCNConv( extended_lat_size , extended_lat_size )
-        self.conv2 = GCNConv( -1 , extended_lat_size )
-        self.conv3 = GCNConv( -1 , extended_lat_size )
+        self.extended_lat_size = int( config['latent_size'] + 4 ) # +4 fuer posx, posy, scale, rot
+        input_size = self.extended_lat_size * 2
 
-        self.lin = Linear(-1, extended_lat_size * 8)
-        self.lin2 = Linear(-1, extended_lat_size)
+        self.conv = GCNConv( self.extended_lat_size , self.extended_lat_size )
+        self.conv2 = GCNConv( -1 , self.extended_lat_size )
+        self.conv3 = GCNConv( -1 , self.extended_lat_size )
+
+        hidden_size = self.extended_lat_size * 32
+
+
+        self.pos = Linear(-1, 2)
+        self.pos_hidden1 = Linear(-1, hidden_size)
+        self.pos_hidden2 = Linear(-1, hidden_size)
+
+        self.vec = Linear(-1, config['latent_size'])
+        self.vec_hidden1 = Linear(-1, hidden_size)
+        self.vec_hidden2 = Linear(-1, hidden_size)
+
+        self.scale = Linear(-1, 1)
+        self.scale_hidden1 = Linear(-1, hidden_size)
+        self.scale_hidden2 = Linear(-1, hidden_size)
+
+        self.rot = Linear(-1, 1)
+        self.rot_hidden1 = Linear(-1, hidden_size)
+        self.rot_hidden2 = Linear(-1, hidden_size)
+
+
         
 
     def delaunay_pool(self, x, edge_index, batch_vector=None):
@@ -224,36 +245,104 @@ class PatternEncoder(torch.nn.Module):
     
     def readout(self, x, batch_vector):
         return torch.cat([global_mean_pool(x, batch_vector), global_add_pool(x, batch_vector)], dim=-1)
+        #return global_add_pool(x, batch_vector)
 
+    def arrange_face(self, x, batch_vector):
 
-    def forward(self, x, edge_index, batch_vector=None):
+        if batch_vector is None:
+            batch_vector = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+
+        # Get unique batches
+        unique_batches = torch.unique(batch_vector)
         
-        pos = x[:, 0:2]
-        x = self.conv(x, edge_index)
-        combined = torch.cat([pos, x], dim=-1)
-        x, edge_index, batch_vector = self.delaunay_pool(combined, edge_index, batch_vector)
-        readout1 = self.readout(x, batch_vector)
+        # Initialize list to store flattened features
+        flattened_features = []
+        
+        # Process each batch separately
+        for batch in unique_batches:
+            # Get mask for current batch
+            batch_mask = batch_vector == batch
+            # Get features for current batch
+            batch_features = x[batch_mask]
+            # Calculate vector lengths of first 2 elements (x,y coordinates)
+            vector_lengths = torch.norm(batch_features[:, :2], dim=1)
+            # Sort by vector length
+            sorted_indices = torch.argsort(vector_lengths)
 
-        pos2 = x[:, 0:2]
-        x = self.conv2(x, edge_index)
-        combined2 = torch.cat([pos2, x], dim=-1)
-        x, edge_index, batch_vector = self.delaunay_pool(combined2, edge_index, batch_vector)
-        readout2 = self.readout(x, batch_vector)
+            batch_features = batch_features[sorted_indices]
+            # Flatten first dimension
+            flattened = batch_features.flatten(0, 1)
+            # Pad with zeros if necessary
+            max_length = self.extended_lat_size * 3
+            if flattened.size(0) < max_length:
+                flattened = torch.cat([flattened, torch.zeros(max_length - flattened.size(0), *flattened.shape[1:])], dim=0)
+            flattened_features.append(flattened)
 
-        pos3 = x[:, 0:2]
-        x = self.conv3(x, edge_index)
-        combined3 = torch.cat([pos3, x], dim=-1)
-        x, edge_index, batch_vector = self.delaunay_pool(combined3, edge_index, batch_vector)
-        readout3 = self.readout(x, batch_vector)
+        # Create new batch vector for flattened features
+        new_batch_vector = unique_batches
+            
+        # Stack all flattened features
+        return torch.stack(flattened_features), new_batch_vector
 
-        print(pos, pos2, pos3)
-        die()
+    def forward(self, x, edge_index, batch_vector=None, target_pos=None):
+        
+        #pos = x[:, 0:2]
+        #x = self.conv(x, edge_index)
+        #combined = torch.cat([pos, x], dim=-1)
+        #x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
+        #readout1 = self.readout(x, batch_vector)
 
+        #pos2 = x[:, 0:2]
+        #x = self.conv2(x, edge_index)
+        #combined2 = torch.cat([pos2, x], dim=-1)
+        #x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
+        #readout2 = self.readout(x, batch_vector)
 
-        x = torch.cat([readout1, readout2, readout3], dim=-1)
-        x = self.lin(x)
-        x = self.lin2(x)
+        #pos3 = x[:, 0:2]
+        #x = self.conv3(x, edge_index)
+        #combined3 = torch.cat([pos3, x], dim=-1)
+        #x, edge_index, batch_vector = self.delaunay_pool(x, edge_index, batch_vector)
+        #readout3 = self.readout(x, batch_vector)
+
+        #if self.training:
+        #    if random.random() < 0.5:
+        #        target_pos = None
+
+        
+
+        
+        #x, batch_vector = self.arrange_face(x, batch_vector)
+        #x = self.readout(x, batch_vector)
+
+        #initial_readout, batch_vector = self.arrange_face(x, batch_vector)
+        initial_readout = self.readout(x, batch_vector)
+        
+        #x = self.conv(x, edge_index).relu()
+        #readout1 = self.readout(x, batch_vector)
+        
+        combined_readout = initial_readout
+
+        pos = self.pos_hidden1(combined_readout).relu()
+        pos = self.pos_hidden2(pos).relu()
+        pos = self.pos(pos)
+        pos = target_pos if target_pos is not None else pos
+
+        vec = self.vec_hidden1(torch.cat([pos, combined_readout], dim=-1)).relu()
+        vec = self.vec_hidden2(vec).relu()
+        vec = self.vec(vec)
+
+        scale = self.scale_hidden1(torch.cat([pos, vec, combined_readout], dim=-1)).relu()
+        scale = self.scale_hidden2(scale).relu()
+        scale = self.scale(scale)
+        
+        rot = self.rot_hidden1(torch.cat([pos, vec, combined_readout], dim=-1)).relu()
+        rot = self.rot_hidden2(rot).relu()
+        rot = self.rot(rot)
+
+        x = torch.cat([pos, scale, rot, vec], dim=-1)
+       
         x = x.flatten()
+        
         return x
 
 
@@ -555,6 +644,8 @@ class PatternTrainer():
         #                   split_labels=True, add_negative_train_samples=False),
         ])
 
+        self.line_trainer = LineTrainer(name)
+
         self.model_path = osp.join(osp.dirname(osp.realpath(__file__)), 'patternModels', name)
         self.dataset = GraphDatasetHandler.load_data(name, "pattern")
         print("dataset info after loading ", len(self.dataset), self.dataset.level)
@@ -569,9 +660,7 @@ class PatternTrainer():
 
         self.model = PatternEncoder(in_channels=self.in_channels, hidden_channels=self.hidden_channels, num_layers=1, out_channels=self.out_channels)
 
-        #model = GAE(LinearEncoder(in_channels, out_channels))
-        #model = VGAE(VariationalGCNEncoder(in_channels, out_channels))
-        #model = VGAE(VariationalLinearEncoder(in_channels, out_channels))
+        
 
         self.epochs = 100000 #100000
 
@@ -581,8 +670,7 @@ class PatternTrainer():
             self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu')))
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         self.scheduler = ReduceLROnPlateau(self.optimizer)
-        #self.scheduler = ExponentialLR(self.optimizer, gamma=0.9)
-        #self.scheduler = LinearLR(self.optimizer, total_iters=200, verbose=True)
+        
 
 
 
@@ -594,7 +682,6 @@ class PatternTrainer():
 
     def trainModel(self, progress_callback=None):
         self.model.train()
-        criterion = torch.nn.MSELoss(reduction='sum')
 
         loss_list = []
         avg_epoch_loss = 0
@@ -606,11 +693,11 @@ class PatternTrainer():
 
             #for train_data in self.dataset:
             for train_data in self.loader:
-                out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch)
-                
+
+                out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch, target_pos=train_data.target_point)
 
                 #loss = criterion(out, train_data.y)
-                loss = self.loss_function(out, train_data.y)
+                loss = self.loss_function(out, train_data.y, epoch)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -638,20 +725,43 @@ class PatternTrainer():
 
         torch.save(self.model.state_dict(), self.model_path)
         
-    def loss_function(self, out, ground_truth):
-        res = torch.unflatten(out, 0, (-1, 4+config['latent_size']))
-        test = torch.unflatten(ground_truth, 0, (-1, 4+config['latent_size']))
+    def loss_function(self, out, ground_truth, epoch):
         
-        resPos = res[:, 0:4]
-        resVec = res[:, 4:]
-        testPos = test[:, 0:4]
-        testVec = test[:, 4:]
         
-        posLoss = torch.nn.MSELoss(reduction='mean')(resPos, testPos)
-        vecLoss = torch.nn.MSELoss(reduction='mean')(resVec, testVec)
+        vecLoss = torch.nn.MSELoss(reduction='mean')(out, ground_truth)
+        
+
+        #
        
         #ToDo: die gewichtung hier ist zufällig, finde eine bessere
-        return posLoss + vecLoss
+        return vecLoss 
+
+    def calc_total_point(self, line):
+        points_tensor = line._points2Tensor().requires_grad_(True)
+        
+        # Scale and rotate
+        theta = torch.tensor(line.rotation * 360 * torch.pi / 180, dtype=torch.float, device=points_tensor.device)
+        # Create rotation matrix with proper gradient tracking
+        rot_matrix = torch.tensor([[torch.cos(theta), -torch.sin(theta)],
+                                  [torch.sin(theta), torch.cos(theta)]], 
+                                 dtype=torch.float,
+                                 device=points_tensor.device,
+                                 requires_grad=True)
+        
+        # Ensure scale is a tensor with gradient tracking
+        scale = torch.tensor(line.scale, dtype=torch.float, requires_grad=True)
+        scaled_points = points_tensor * scale
+        
+        rotated_points = torch.matmul(scaled_points, rot_matrix.T)
+        
+        # Create position tensor with gradient tracking
+        position_tensor = torch.tensor([line.position['x'], line.position['y']], 
+                                     dtype=torch.float,
+                                     device=points_tensor.device,
+                                     requires_grad=True).repeat(rotated_points.shape[0], 1)
+        
+        total_points = rotated_points + position_tensor
+        return total_points
     
     def getDatasetSample(self):
         self.model.eval()
@@ -665,7 +775,7 @@ class PatternTrainer():
 
         data = self.dataset.get_random_item()
        
-        z = self.model.forward(data.x, data.edge_index)
+        z = self.model.forward(data.x, data.edge_index, target_pos=data.target_point)
         return z, data.y, data.x
 
     def predict(self, x, edge_index):

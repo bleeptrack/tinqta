@@ -32,6 +32,9 @@ class Line():
                 })
         return points
     
+    def _points2Tensor(self):
+        return torch.tensor([[point['x'], point['y']] for point in self.points], dtype=torch.float)
+    
     def update_position_from_reference(self, point):
         print("updating position from reference", self.position, point)
         if(self.position_type == "relative"):
@@ -76,6 +79,28 @@ class Line():
             "position": self.position,
             "position_type": self.position_type
         }
+
+    # def get_total_tensor(self):
+    #     total_position_points = self._points2Tensor()
+    #     # Scale and rotate points
+    #     points_tensor = self._points2Tensor()
+        
+    #     # Create rotation matrices
+    #     theta = torch.tensor(self.rotation * 360 * torch.pi / 180, dtype=torch.float)
+    #     rot_matrix = torch.tensor([
+    #         [torch.cos(theta), -torch.sin(theta)],
+    #         [torch.sin(theta), torch.cos(theta)]
+    #     ])
+        
+    #     # Apply scale and rotation
+    #     scaled_points = points_tensor * self.scale * config['max_dist']
+    #     rotated_points = torch.matmul(scaled_points, rot_matrix.T)
+        
+    #     # Create position tensor of same shape as rotated_points and add it
+    #     position_tensor = torch.tensor([self.position['x'], self.position['y']]).repeat(rotated_points.shape[0], 1)
+    #     total_position_points = rotated_points + position_tensor
+
+    #     return total_position_points
     
     def get_absoulte_maxX(self):
         return max([point['x'] for point in self.points]) + self.position['x']

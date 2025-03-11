@@ -300,6 +300,7 @@ class GraphHandler:
         centers_X = [self.lines[i].position['x'] for i in ids]
         centers_Y = [self.lines[i].position['y'] for i in ids]
         center_point = { "x": sum(centers_X)/len(centers_X), "y": sum(centers_Y)/len(centers_Y) }
+        
 
         #position of each node
         pos = torch.tensor([[self.lines[i].position['x'],self.lines[i].position['y']] for i in ids], dtype=torch.float)
@@ -321,8 +322,9 @@ class GraphHandler:
         
         x = torch.stack(hidden_states, dim=0) #vllt nochmal checken ob der jetzt "richtig rum" ist
 
-
-        data = Data(x=x, y=ground_truth, center_point=center_point, pos=pos)
+        target_point = ground_truth[:2].unsqueeze(0) if ground_truth is not None else None
+        
+        data = Data(x=x, y=ground_truth, center_point=center_point, pos=pos, target_point=target_point)
         
         data = T.Delaunay()(data)
         if data.face is not None:
@@ -384,6 +386,7 @@ class GraphHandler:
         
         if with_combinations:
             combinations = torch.tensor(list(product([False, True], repeat=len(ids))))
+            combinations = combinations[combinations.sum(dim=1) <= 3]
             combinations = combinations[combinations.any(dim=1)]
 
             data_list = []
@@ -451,6 +454,14 @@ class GraphHandler:
     
     @staticmethod
     def decompose_node_hidden_state(z, line_trainer):
+
+        if z.dim() > 1:
+            # Break apart tensor into list of 1D tensors
+            z_list = []
+            for i in range(z.size(0)):
+                z_list.append(z[i])
+            return [GraphHandler.decompose_node_hidden_state(z_single, line_trainer) for z_single in z_list]
+
         posX, posY, rot, scale, latVec = GraphHandler.extract_parts(z, line_trainer)
         points = line_trainer.decode_latent_vector(latVec)
         l = Line(points, scale, rot, position={"x":posX, "y":posY}, position_type="relative")
