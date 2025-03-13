@@ -132,7 +132,7 @@ class PatternEncoder(torch.nn.Module):
         self.extended_lat_size = int( config['latent_size'] + 4 ) # +4 fuer posx, posy, scale, rot
         input_size = self.extended_lat_size * 2
 
-        hidden_size = self.extended_lat_size * 32
+        hidden_size = self.extended_lat_size * 64
 
         self.conv = GCNConv( self.extended_lat_size , hidden_size )
         self.conv2 = GCNConv( -1 , hidden_size )
@@ -248,7 +248,7 @@ class PatternEncoder(torch.nn.Module):
     def readout(self, x, batch_vector):
         return torch.cat([global_mean_pool(x, batch_vector), global_add_pool(x, batch_vector)], dim=-1)
         #return global_add_pool(x, batch_vector)
-
+        #return global_mean_pool(x, batch_vector)
     def arrange_face(self, x, batch_vector):
 
         if batch_vector is None:
@@ -290,24 +290,25 @@ class PatternEncoder(torch.nn.Module):
 
     def forward(self, x, edge_index, batch_vector=None, target_pos=None):
 
+
         x_face, _ = self.arrange_face(x, batch_vector)
         
-        pos = x[:, 0:2]
+        #pos = x[:, 0:2]
         x = self.conv(x, edge_index).relu()
-        combined = torch.cat([pos, x], dim=-1)
-        x, edge_index, batch_vector = self.delaunay_pool(combined, edge_index, batch_vector)
+        #combined = torch.cat([pos, x], dim=-1)
+        #x, edge_index, batch_vector = self.delaunay_pool(combined, edge_index, batch_vector)
         readout1 = self.readout(x, batch_vector)
 
-        pos2 = x[:, 0:2]
+        #pos2 = x[:, 0:2]
         x = self.conv2(x, edge_index).relu()
-        combined2 = torch.cat([pos2, x], dim=-1)
-        x, edge_index, batch_vector = self.delaunay_pool(combined2, edge_index, batch_vector)
+        #combined2 = torch.cat([pos2, x], dim=-1)
+        #x, edge_index, batch_vector = self.delaunay_pool(combined2, edge_index, batch_vector)
         readout2 = self.readout(x, batch_vector)
 
-        pos3 = x[:, 0:2]
+        #pos3 = x[:, 0:2]
         x = self.conv3(x, edge_index).relu()
-        combined3 = torch.cat([pos3, x], dim=-1)
-        x, edge_index, batch_vector = self.delaunay_pool(combined3, edge_index, batch_vector)
+        #combined3 = torch.cat([pos3, x], dim=-1)
+        #x, edge_index, batch_vector = self.delaunay_pool(combined3, edge_index, batch_vector)
         readout3 = self.readout(x, batch_vector)
 
         #if self.training:
@@ -328,11 +329,11 @@ class PatternEncoder(torch.nn.Module):
         
         combined_readout = torch.cat([x_face, initial_readout], dim=-1)
 
-        #pos = self.pos_hidden1(combined_readout).relu()
-        #pos = self.pos_hidden2(pos).relu()
-        #pos = self.pos(pos)
+        pos = self.pos_hidden1(torch.cat([target_pos, combined_readout], dim=-1)).relu()
+        pos = self.pos_hidden2(pos).relu()
+        pos = self.pos(pos)
         #pos = target_pos if target_pos is not None else pos
-        pos = target_pos
+        #pos = target_pos
 
 
         vec = self.vec_hidden1(torch.cat([pos, combined_readout], dim=-1)).relu()
@@ -702,6 +703,22 @@ class PatternTrainer():
             #for train_data in self.dataset:
             for train_data in self.loader:
 
+                # Add small random noise to target positions during training
+                if train_data.target_point is not None:
+                    # Ramp up noise from 0 to 0.05 between epochs 300-800
+
+                    noise_scale = max(0.0, min(0.1 * (epoch - 500) / 1000, 0.1))
+                    
+                    noise = torch.randn_like(train_data.target_point) * noise_scale
+                    train_data.target_point = train_data.target_point + noise
+                    
+                    noise_x = torch.randn_like(train_data.x) * noise_scale/10  
+                    train_data.x = train_data.x + noise_x
+
+
+                
+                
+
                 out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch, target_pos=train_data.target_point)
 
                 #loss = criterion(out, train_data.y)
@@ -709,6 +726,7 @@ class PatternTrainer():
 
                 self.optimizer.zero_grad()
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 self.optimizer.step()
 
                 running_loss += loss.item()
@@ -720,7 +738,7 @@ class PatternTrainer():
             self.scheduler.step(running_loss)
 
 
-            print("Epoch:", epoch, "Loss:", running_loss, "sampler", len(self.loader))
+            print("Epoch:", epoch, "Loss:", running_loss, "sampler", len(self.loader), noise_scale)
             avg_epoch_loss += running_loss
 
 
@@ -735,14 +753,40 @@ class PatternTrainer():
         
     def loss_function(self, out, ground_truth, epoch):
         
-        
-        vecLoss = torch.nn.MSELoss(reduction='mean')(out, ground_truth)
-        
+        out = out.view(-1,7)
+        ground_truth = ground_truth.view(-1,7)
 
-        #
-       
-        #ToDo: die gewichtung hier ist zufällig, finde eine bessere
-        return vecLoss 
+        # Split vectors for logging
+        pred_pos = out[:, 0:2]
+        pred_scale = out[:, 2]
+        pred_rot = out[:, 3]
+        pred_latent = out[:, 4:]
+            
+        gt_pos = ground_truth[:, 0:2]
+        gt_scale = ground_truth[:, 2]
+        gt_rot = ground_truth[:, 3]
+        gt_latent = ground_truth[:, 4:]
+
+        pos_loss = torch.nn.MSELoss()(pred_pos, gt_pos)
+        scale_loss = torch.nn.MSELoss()(pred_scale, gt_scale)
+        rot_loss = torch.nn.MSELoss()(pred_rot, gt_rot)
+        latent_loss = torch.nn.MSELoss()(pred_latent, gt_latent)
+
+        
+        pos_weight = 3
+        scale_weight = 1  
+        rot_weight = 1    
+        latent_weight = 0.5
+
+        #print(pos_loss, scale_loss, rot_loss, latent_loss)
+    
+        total_loss = (pos_weight * pos_loss + 
+                 scale_weight * scale_loss + 
+                 rot_weight * rot_loss + 
+                 latent_weight * latent_loss) / 4.0
+        
+        
+        return total_loss 
 
     def calc_total_point(self, line):
         points_tensor = line._points2Tensor().requires_grad_(True)
@@ -784,6 +828,7 @@ class PatternTrainer():
         data = self.dataset.get_random_item()
        
         z = self.model.forward(data.x, data.edge_index, target_pos=data.target_point)
+        
         return z, data.y, data.x
 
     def predict(self, x, edge_index):
