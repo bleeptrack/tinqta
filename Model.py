@@ -831,9 +831,9 @@ class PatternTrainer():
         
         return z, data.y, data.x
 
-    def predict(self, x, edge_index):
+    def predict(self, x, edge_index, pos):
         self.model.eval()
-        return self.model.forward(x, edge_index)
+        return self.model.forward(x, edge_index, batch_vector=None, target_pos=pos)
     
   
 

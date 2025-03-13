@@ -8,6 +8,7 @@ class Line():
         self.position = position
         self.position_type = position_type
         self.latent_vectors = {}
+        self.is_fixed = False
 
         if isinstance(points, torch.Tensor):
             self.points = Line._tensor2Points(points)
@@ -35,6 +36,31 @@ class Line():
     def _points2Tensor(self):
         return torch.tensor([[point['x'], point['y']] for point in self.points], dtype=torch.float)
     
+    def get_pattern_z(self, latent_name=None, center_position=None):
+        if latent_name is None:
+            if len(self.latent_vectors.keys()) == 1:
+                latent_name = list(self.latent_vectors.keys())[0]
+            else:
+                raise ValueError("No latent name provided and multiple latent vectors found")
+        # Concatenate scalar values with the latent vector tensor
+
+        posX = self.position['x']
+        posY = self.position['y']
+
+        if center_position is not None:
+            posX -= center_position['x']
+            posY -= center_position['y']
+            posX /= config['max_dist']
+            posY /= config['max_dist']
+            
+
+        if self.position_type == "absolute" and center_position is None:
+            raise ValueError("Center position is required for absolute position")
+        return torch.cat([
+            torch.tensor([posX, posY, self.rotation, self.scale], dtype=torch.float),
+            self.latent_vectors[latent_name]
+        ])
+
     def update_position_from_reference(self, point):
         print("updating position from reference", self.position, point)
         if(self.position_type == "relative"):

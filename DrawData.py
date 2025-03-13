@@ -187,25 +187,25 @@ class GraphHandler:
         self.test_data = data
         #pred = self.decompose_node(data.x)
         #self.lines.append(pred)
-        ground_truth = self.decompose_node(data.y)
+
+        noisy_data = data.y.clone() + torch.randn(data.y.size()) * 0.01
+        ground_truth = self.decompose_node(noisy_data)
         ground_truth.update_position_from_reference({"x":0, "y":0})
+        #ground_truth.is_fixed = True
         self.lines.append(ground_truth)
         for i in range(data.x.size()[0]):
             n = self.decompose_node(data.x[i])
             n.update_position_from_reference({"x":0, "y":0})
-            print("n", n)
+            n.is_fixed = True
             self.lines.append(n)
 
-        data2  = self.sample_graph(0)
-        print("centerpoint", data2.center_point, data.center_point)
-        
+        #add 5 random lines
+        #for i in range(1):
+        #    z = self.line_trainer.randomInitPoint()
+        #    line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
+        #    line.update_position_from_reference({"x":0, "y":0})
+        #    self.lines.append(line)
 
-            
-        diff = torch.abs(data.x - data2.x)
-        print("Difference between data.x and x:")
-        print(diff)
-        print("Max difference:", torch.max(diff))
-        print("Mean difference:", torch.mean(diff))
         
 
         
@@ -215,25 +215,34 @@ class GraphHandler:
     def calculate_gen_step(self):
         
         self.gen_step = []
-        adation_rate = 0.005
+        adaption_rate = 0.1
+        
 
+
+        for i in range(len(self.lines)):
+            data = self.sample_graph(i, node_dropout=0.1)
+            
+            if data is not None:
+                z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                previous_line_z = self.lines[i].get_pattern_z(center_position=data.center_point)
+                if self.lines[i].is_fixed is False:
+                
+                    adapted_z = previous_line_z + adaption_rate * (z - previous_line_z)
+
+                    
+                    line = self.decompose_node(adapted_z)
+                    
+                    
+                    
+                    line.update_position_from_reference(data.center_point)
+
+                    
+
+                    self.gen_step.append(line)
+                else:
+                    self.gen_step.append(self.lines[i])
 
        
-        data = self.sample_graph(0)
-        
-        if data is not None:
-            z = self.pattern_trainer.predict(data.x, data.edge_index)
-            #adapted_z = ground_truth + adation_rate * (z - ground_truth)
-            #print("adapted_z", adapted_z)
-            line = self.decompose_node(z)
-            line.update_position_from_reference(data.center_point)
-
-            self.gen_step.append(line)
-
-        o_z = self.pattern_trainer.predict(self.test_data.x, self.test_data.edge_index)
-        o_line = self.decompose_node(o_z)
-        o_line.update_position_from_reference(data.center_point)
-        self.gen_step.append(o_line)
            
 
         return self.gen_step
@@ -363,7 +372,7 @@ class GraphHandler:
 
 
     
-    def sample_graph(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False, with_combinations=False):
+    def sample_graph(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False, with_combinations=False, node_dropout=0.0):
         if latent_name is None:
             latent_name = self.pattern_trainer.name
 
@@ -383,6 +392,20 @@ class GraphHandler:
 
         if len(ids) == 0:
             return None
+        
+        if node_dropout > 0 and len(ids) > 1:
+            #drop node_dropout% of the nodes
+            keepers = []
+            for i in range(len(ids)):
+                if random.random() > node_dropout:
+                    keepers.append(ids[i])
+
+            if len(keepers) == 0:
+                keepers.append(random.choice(ids))
+
+            print("dropping nodes.", len(keepers), "left from", len(ids))
+            ids = keepers
+            
         
         if with_combinations:
             combinations = torch.tensor(list(product([False, True], repeat=len(ids))))
