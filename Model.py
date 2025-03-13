@@ -144,6 +144,8 @@ class PatternEncoder(torch.nn.Module):
         self.pos = Linear(-1, 2)
         self.pos_hidden1 = Linear(-1, hidden_size)
         self.pos_hidden2 = Linear(-1, hidden_size)
+        self.pos_hidden3 = Linear(-1, hidden_size)
+        self.pos_hidden4 = Linear(-1, hidden_size)
 
         self.vec = Linear(-1, config['latent_size'])
         self.vec_hidden1 = Linear(-1, hidden_size)
@@ -331,6 +333,8 @@ class PatternEncoder(torch.nn.Module):
 
         pos = self.pos_hidden1(torch.cat([target_pos, combined_readout], dim=-1)).relu()
         pos = self.pos_hidden2(pos).relu()
+        pos = self.pos_hidden3(pos).relu()
+        pos = self.pos_hidden4(pos).relu()
         pos = self.pos(pos)
         #pos = target_pos if target_pos is not None else pos
         #pos = target_pos
@@ -707,12 +711,12 @@ class PatternTrainer():
                 if train_data.target_point is not None:
                     # Ramp up noise from 0 to 0.05 between epochs 300-800
 
-                    noise_scale = max(0.0, min(0.1 * (epoch - 500) / 1000, 0.1))
+                    noise_scale = max(0.0, min(0.3 * (epoch - 500) / 1000, 0.3))
                     
                     noise = torch.randn_like(train_data.target_point) * noise_scale
                     train_data.target_point = train_data.target_point + noise
                     
-                    noise_x = torch.randn_like(train_data.x) * noise_scale/10  
+                    noise_x = torch.randn_like(train_data.x) * noise_scale/30 
                     train_data.x = train_data.x + noise_x
 
 
@@ -773,7 +777,7 @@ class PatternTrainer():
         latent_loss = torch.nn.MSELoss()(pred_latent, gt_latent)
 
         
-        pos_weight = 3
+        pos_weight = 50
         scale_weight = 1  
         rot_weight = 1    
         latent_weight = 0.5
@@ -826,8 +830,9 @@ class PatternTrainer():
         #print("dataset info", len(self.dataset), self.dataset.level)
 
         data = self.dataset.get_random_item()
+        pos = data.target_point + torch.randn_like(data.target_point) * 0.5
        
-        z = self.model.forward(data.x, data.edge_index, target_pos=data.target_point)
+        z = self.model.forward(data.x, data.edge_index, target_pos=pos)
         
         return z, data.y, data.x
 

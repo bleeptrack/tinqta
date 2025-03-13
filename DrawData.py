@@ -191,7 +191,7 @@ class GraphHandler:
         noisy_data = data.y.clone() + torch.randn(data.y.size()) * 0.01
         ground_truth = self.decompose_node(noisy_data)
         ground_truth.update_position_from_reference({"x":0, "y":0})
-        #ground_truth.is_fixed = True
+        ground_truth.is_fixed = True
         self.lines.append(ground_truth)
         for i in range(data.x.size()[0]):
             n = self.decompose_node(data.x[i])
@@ -200,11 +200,11 @@ class GraphHandler:
             self.lines.append(n)
 
         #add 5 random lines
-        #for i in range(1):
-        #    z = self.line_trainer.randomInitPoint()
-        #    line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-        #    line.update_position_from_reference({"x":0, "y":0})
-        #    self.lines.append(line)
+        for i in range(1):
+            z = self.line_trainer.randomInitPoint()
+            line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
+            line.update_position_from_reference({"x":0, "y":0})
+            self.lines.append(line)
 
         
 
@@ -220,22 +220,34 @@ class GraphHandler:
 
 
         for i in range(len(self.lines)):
-            data = self.sample_graph(i, node_dropout=0.1)
+            if self.lines[i].adaption_rate == 0.5:
+                firsttime = True
+            else:
+                firsttime = False
+
+            #self.lines[i].dropout *= 0.995
+            self.lines[i].dropout = 0.1
+            self.lines[i].adaption_rate *= 0.995
+            self.lines[i].adaption_rate = max(self.lines[i].adaption_rate, 0.2)
+
+            data = self.sample_graph(i, node_dropout=self.lines[i].dropout)
             
             if data is not None:
                 z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
                 previous_line_z = self.lines[i].get_pattern_z(center_position=data.center_point)
                 if self.lines[i].is_fixed is False:
                 
-                    adapted_z = previous_line_z + adaption_rate * (z - previous_line_z)
 
+                    adapted_z = previous_line_z + self.lines[i].adaption_rate * (z - previous_line_z)
+                    if firsttime:
+                        adapted_z = z
                     
                     line = self.decompose_node(adapted_z)
                     
                     
                     
                     line.update_position_from_reference(data.center_point)
-
+                    line.dropout = self.lines[i].dropout
                     
 
                     self.gen_step.append(line)

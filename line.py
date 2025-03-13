@@ -9,6 +9,8 @@ class Line():
         self.position_type = position_type
         self.latent_vectors = {}
         self.is_fixed = False
+        self.dropout = 1
+        self.adaption_rate = 0.5
 
         if isinstance(points, torch.Tensor):
             self.points = Line._tensor2Points(points)
