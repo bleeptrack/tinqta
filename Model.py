@@ -3,7 +3,7 @@ from functools import reduce
 import math
 import torch
 from torch import Tensor
-from torch.optim.lr_scheduler import LambdaLR, StepLR, MultiStepLR, ExponentialLR, ReduceLROnPlateau, LinearLR
+from torch.optim.lr_scheduler import CyclicLR, LambdaLR, StepLR, MultiStepLR, ExponentialLR, ReduceLROnPlateau, LinearLR
 from torch.nn import AvgPool1d, MaxPool1d
 import random
 import torch_geometric.transforms as T
@@ -138,14 +138,13 @@ class PatternEncoder(torch.nn.Module):
         self.conv2 = GCNConv( -1 , hidden_size )
         self.conv3 = GCNConv( -1 , hidden_size )
 
-        
+        self.pos_conv = GCNConv( -1 , hidden_size )
 
 
         self.pos = Linear(-1, 2)
-        self.pos_hidden1 = Linear(-1, hidden_size)
-        self.pos_hidden2 = Linear(-1, hidden_size)
-        self.pos_hidden3 = Linear(-1, hidden_size)
-        self.pos_hidden4 = Linear(-1, hidden_size)
+        self.pos_hidden1 = Linear(-1, hidden_size * 3)
+        self.pos_hidden2 = Linear(-1, hidden_size * 3)
+      
 
         self.vec = Linear(-1, config['latent_size'])
         self.vec_hidden1 = Linear(-1, hidden_size)
@@ -290,12 +289,12 @@ class PatternEncoder(torch.nn.Module):
         
         return torch.stack(flattened_features), new_batch_vector
 
-    def forward(self, x, edge_index, batch_vector=None, target_pos=None):
+    def forward(self, x, edge_index, batch_vector=None, target_pos=None, epoch=None):
 
 
         x_face, _ = self.arrange_face(x, batch_vector)
         
-        #pos = x[:, 0:2]
+        nodes_pos = x[:, 0:2]
         x = self.conv(x, edge_index).relu()
         #combined = torch.cat([pos, x], dim=-1)
         #x, edge_index, batch_vector = self.delaunay_pool(combined, edge_index, batch_vector)
@@ -331,13 +330,21 @@ class PatternEncoder(torch.nn.Module):
         
         combined_readout = torch.cat([x_face, initial_readout], dim=-1)
 
-        pos = self.pos_hidden1(torch.cat([target_pos, combined_readout], dim=-1)).relu()
-        pos = self.pos_hidden2(pos).relu()
-        pos = self.pos_hidden3(pos).relu()
-        pos = self.pos_hidden4(pos).relu()
-        pos = self.pos(pos)
+        #pos_correction = self.pos_hidden1(torch.cat([target_pos, x_face], dim=-1)).relu()
+        #pos_correction = self.pos_hidden2(pos_correction).relu()
+        #pos = self.pos_hidden3(pos).relu()
+        #pos = self.pos_hidden4(pos).relu()
+        #pos_correction = self.pos(pos_correction)
+        #print("pos", pos_correction)
+        #pos = target_pos + pos_correction
         #pos = target_pos if target_pos is not None else pos
         #pos = target_pos
+
+        #pos = self.pos_conv(nodes_pos, edge_index).relu()
+        #pos = self.readout(pos, batch_vector)
+        pos = self.pos_hidden1(torch.cat([target_pos, combined_readout], dim=-1)).relu()
+        pos = self.pos_hidden2(pos).relu()
+        pos = self.pos(pos)
 
 
         vec = self.vec_hidden1(torch.cat([pos, combined_readout], dim=-1)).relu()
@@ -681,8 +688,9 @@ class PatternTrainer():
         if osp.exists(self.model_path):
             print("PATTERNMODEL EXISTS. LOADING...", self.model_path)
             self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu')))
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)
-        self.scheduler = ReduceLROnPlateau(self.optimizer)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+        self.scheduler = None
+
         
 
 
@@ -691,8 +699,37 @@ class PatternTrainer():
         #    print(train_data)
 
 
+    def get_noisy_target_point(self, target_point, center_point, noise_scale):
+        
+        line_positions = torch.stack([torch.tensor([line['x'], line['y']], dtype=torch.float) for line in self.dataset.line_positions])
+        centers = torch.stack([center_point['x'], center_point['y']], dim=1)
+        total_targets = target_point * config['max_dist'] + centers
+        
+        # Calculate pairwise distances between line_positions and total_targets using cdist
+        distances = torch.cdist(line_positions, total_targets)  # [25,500]
+        reference_index = torch.argmin(distances, dim=0)
 
+        noisy_targets = total_targets + torch.randn_like(total_targets) * (noise_scale * config['max_dist'])
+        
 
+        current_index = torch.argmin(torch.cdist(line_positions, noisy_targets), dim=0)
+
+        problem_points = current_index != reference_index
+        #print(problem_points.sum())
+
+        while problem_points.sum() > 0:
+
+            noisy_targets[problem_points] = (total_targets[problem_points] - noisy_targets[problem_points]) * 0.1 + noisy_targets[problem_points]
+
+            current_index = torch.argmin(torch.cdist(line_positions, noisy_targets), dim=0)
+            problem_points = current_index != reference_index
+            #print(problem_points.sum())
+        
+        
+        noisy_targets = (noisy_targets - centers) / config['max_dist']
+        
+        return noisy_targets
+    
     def trainModel(self, progress_callback=None):
         self.model.train()
 
@@ -711,11 +748,12 @@ class PatternTrainer():
                 if train_data.target_point is not None:
                     # Ramp up noise from 0 to 0.05 between epochs 300-800
 
-                    noise_scale = max(0.0, min(0.3 * (epoch - 500) / 1000, 0.3))
+                    noise_scale = max(0.0, min(0.3 * (epoch - 200) / 300, 0.3))
+                    #noise_scale = 0.3
                     
-                    noise = torch.randn_like(train_data.target_point) * noise_scale
-                    train_data.target_point = train_data.target_point + noise
-                    
+                    #noise = torch.randn_like(train_data.target_point) * noise_scale
+                    #new_target_point = train_data.target_point + noise
+                    new_target_point = self.get_noisy_target_point(train_data.target_point, train_data.center_point, noise_scale)
                     noise_x = torch.randn_like(train_data.x) * noise_scale/30 
                     train_data.x = train_data.x + noise_x
 
@@ -723,10 +761,11 @@ class PatternTrainer():
                 
                 
 
-                out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch, target_pos=train_data.target_point)
+                out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch, target_pos=new_target_point)
+                
 
-                #loss = criterion(out, train_data.y)
-                loss = self.loss_function(out, train_data.y, epoch)
+                #loss = self.loss_pos(out, train_data.target_point)
+                loss = self.loss_function(out, train_data.y)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -739,10 +778,15 @@ class PatternTrainer():
 
             #ToDo: num_graphs auch beim line training?
             running_loss /= len(self.loader)
-            self.scheduler.step(running_loss)
+            if epoch > 500:
+                if self.scheduler is None:
+                    self.scheduler = CyclicLR(self.optimizer, base_lr=0.0001, max_lr=0.001, step_size_up=30, mode='triangular2')
+                if epoch == 1000:
+                    self.scheduler = CyclicLR(self.optimizer, base_lr=0.00001, max_lr=0.0001, step_size_up=30, mode='triangular2')
+                self.scheduler.step()
 
 
-            print("Epoch:", epoch, "Loss:", running_loss, "sampler", len(self.loader), noise_scale)
+            print("Epoch:", epoch, "Loss:", running_loss, "sampler", len(self.loader), noise_scale, self.optimizer.param_groups[0]['lr'])
             avg_epoch_loss += running_loss
 
 
@@ -754,8 +798,13 @@ class PatternTrainer():
                     progress_callback(self.name)
 
         torch.save(self.model.state_dict(), self.model_path)
+
+    def loss_pos(self, out, ground_truth):
+        return torch.nn.MSELoss()(out, ground_truth)
+    
+   
         
-    def loss_function(self, out, ground_truth, epoch):
+    def loss_function(self, out, ground_truth):
         
         out = out.view(-1,7)
         ground_truth = ground_truth.view(-1,7)
@@ -777,18 +826,21 @@ class PatternTrainer():
         latent_loss = torch.nn.MSELoss()(pred_latent, gt_latent)
 
         
-        pos_weight = 50
+        pos_weight = 5
         scale_weight = 1  
         rot_weight = 1    
         latent_weight = 0.5
+
+        normalizer = pos_weight + scale_weight + rot_weight + latent_weight
 
         #print(pos_loss, scale_loss, rot_loss, latent_loss)
     
         total_loss = (pos_weight * pos_loss + 
                  scale_weight * scale_loss + 
                  rot_weight * rot_loss + 
-                 latent_weight * latent_loss) / 4.0
+                 latent_weight * latent_loss) / normalizer
         
+      
         
         return total_loss 
 
@@ -830,7 +882,7 @@ class PatternTrainer():
         #print("dataset info", len(self.dataset), self.dataset.level)
 
         data = self.dataset.get_random_item()
-        pos = data.target_point + torch.randn_like(data.target_point) * 0.5
+        pos = data.target_point + torch.randn_like(data.target_point) * 0.3
        
         z = self.model.forward(data.x, data.edge_index, target_pos=pos)
         

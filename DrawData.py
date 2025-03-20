@@ -67,7 +67,7 @@ class GraphDatasetHandler():
         self.name = name
         self.level = level
 
-    def save_data(self, data):
+    def save_data(self, data, line_positions=None):
 
         file_path = osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'-'+ self.level +'.pt')
         if osp.exists(file_path):
@@ -79,6 +79,7 @@ class GraphDatasetHandler():
         self.data = data
         self.original_data = data.copy()
         self.config = config
+        self.line_positions = line_positions
 
 
         if self.level == "pattern":
@@ -215,44 +216,79 @@ class GraphHandler:
     def calculate_gen_step(self):
         
         self.gen_step = []
-        adaption_rate = 0.1
+        diff_threshold = 0.01
         
 
 
         for i in range(len(self.lines)):
-            if self.lines[i].adaption_rate == 0.5:
-                firsttime = True
-            else:
-                firsttime = False
+            if self.lines[i].is_fixed is False:
 
-            #self.lines[i].dropout *= 0.995
-            self.lines[i].dropout = 0.1
-            self.lines[i].adaption_rate *= 0.995
-            self.lines[i].adaption_rate = max(self.lines[i].adaption_rate, 0.2)
+                #adapted_z = previous_line_z + self.lines[i].adaption_rate * (z - previous_line_z)
 
-            data = self.sample_graph(i, node_dropout=self.lines[i].dropout)
-            
-            if data is not None:
-                z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
-                previous_line_z = self.lines[i].get_pattern_z(center_position=data.center_point)
-                if self.lines[i].is_fixed is False:
+                #print(len(self.lines))
+                
+                self.lines[i].adaption_rate = 0.1
+                self.lines[i].dropout = 0
+                
                 
 
-                    adapted_z = previous_line_z + self.lines[i].adaption_rate * (z - previous_line_z)
-                    if firsttime:
-                        adapted_z = z
-                    
-                    line = self.decompose_node(adapted_z)
-                    
-                    
-                    
-                    line.update_position_from_reference(data.center_point)
-                    line.dropout = self.lines[i].dropout
-                    
+                data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=True)
+                if data is None:
+                    print("line out of reference reach")
+                    exit()
 
-                    self.gen_step.append(line)
+                if not hasattr(self.lines[i], "used_ids"):
+                    self.lines[i].used_ids = data[0].used_ids
+                    data = data[0]
                 else:
-                    self.gen_step.append(self.lines[i])
+                    print(self.lines[i].used_ids)
+                    
+                    """ data_filtered = [d for d in data if all(used_id in d.used_ids for used_id in self.lines[i].used_ids)]
+                    if len(data_filtered) > 0:
+                        print("choosing options", [d.used_ids for d in data_filtered])
+                        if self.lines[i].stopped: 
+                            if len(data_filtered) > 1:
+                                print("choosing second option", data_filtered[1].used_ids)
+                                data = data_filtered[1]
+                            else:
+                                print("DONE")
+                                #exit()
+                                data = data_filtered[0]
+                        else:
+                            
+                            data = data_filtered[0]
+                    else:
+                        print("no data found for old ids", self.lines[i].used_ids)
+                        data = data[0]
+                        print("using new data", data.used_ids) """
+
+                    data = data[0]
+                
+                #flexi_rate = (self.lines[i].adaption_rate/len(self.lines[i].used_ids))
+                flexi_rate = self.lines[i].adaption_rate
+                print("data", data.used_ids, self.lines[i].used_ids, flexi_rate)
+                previous_line_z = self.lines[i].get_pattern_z(center_position=data.center_point)
+                
+                
+                z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                adapted_z = previous_line_z + flexi_rate * (z - previous_line_z)       
+                        
+                    
+                    
+                line = self.decompose_node(adapted_z)
+                line.update_position_from_reference(data.center_point)
+                line.used_ids = data.used_ids
+               
+                if self.lines[i].diff(line) < diff_threshold:
+                    print("diff reached:", self.lines[i].diff(line))
+                    line.stopped = True
+                else:
+                    line.stopped = False
+                        
+
+                self.gen_step.append(line)
+            else:
+                self.gen_step.append(self.lines[i])
 
        
            
@@ -385,6 +421,10 @@ class GraphHandler:
 
     
     def sample_graph(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False, with_combinations=False, node_dropout=0.0):
+        if with_combinations and node_dropout > 0:
+            print("node dropout and combinations not supported")
+            exit()
+        
         if latent_name is None:
             latent_name = self.pattern_trainer.name
 
@@ -428,7 +468,9 @@ class GraphHandler:
 
             for combo in combinations:
                 combo_ids = ids[combo]
-                data_list.append(self.create_pattern_graph(pred_id, combo_ids, latent_name))
+                data = self.create_pattern_graph(pred_id, combo_ids, latent_name)
+                data.used_ids = combo_ids.tolist()
+                data_list.append(data)
             return data_list
 
         else:    
@@ -455,12 +497,12 @@ class GraphHandler:
                 if data is not None:
                     data_list.append(data)
 
-        
+        positions = [line.position for line in self.lines]
             
                 
         print("saving dataset of length ", len(data_list))
         pattern_data = GraphDatasetHandler(name, "pattern")
-        pattern_data.save_data(data_list)
+        pattern_data.save_data(data_list, positions)
         
 
 

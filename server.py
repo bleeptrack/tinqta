@@ -299,7 +299,7 @@ def generate_pattern(data):
         emit('prediction', info)
 
     else:
-        for i in range(300):
+        for i in range(1000):
             gh.calculate_gen_step()
             info = {}
             info["base_list"] = [line.to_JSON() for line in gh.lines]

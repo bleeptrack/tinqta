@@ -35,6 +35,9 @@ class Line():
                 })
         return points
     
+    def diff(self, other):
+        return torch.abs(torch.sum(torch.tensor([[point['x'] - other.points[i]['x'], point['y'] - other.points[i]['y']] for i, point in enumerate(self.points)], dtype=torch.float)))
+    
     def _points2Tensor(self):
         return torch.tensor([[point['x'], point['y']] for point in self.points], dtype=torch.float)
     
@@ -64,7 +67,7 @@ class Line():
         ])
 
     def update_position_from_reference(self, point):
-        print("updating position from reference", self.position, point)
+        #print("updating position from reference", self.position, point)
         if(self.position_type == "relative"):
             self.position['x'] *= config['max_dist']
             self.position['y'] *= config['max_dist']
