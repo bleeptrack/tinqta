@@ -4,7 +4,7 @@ config = {
     'patternReferencePoint': 'start',
     'latent_size': 3,
     'stroke_normalizing_size': 100,
-    'batch_size_pattern': 40000,
+    'batch_size_pattern': 500,
     'batch_size_line': 500,
     'max_dist' : 150,
     'node_dropout': 0,

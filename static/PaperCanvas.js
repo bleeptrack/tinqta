@@ -277,7 +277,7 @@ export class PaperCanvas extends HTMLElement {
 	}
 
 	drawLine(lineJSON, color, smoothing){
-		console.log("DRAWING LINE", lineJSON)
+		//console.log("DRAWING LINE", lineJSON)
 		let path = new Path({segments: lineJSON.points})
 		path.strokeColor = color
 		path.pivot = path.firstSegment.point

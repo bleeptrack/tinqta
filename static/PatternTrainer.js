@@ -48,20 +48,44 @@ export class PatternTrainer extends HTMLElement {
 		this.socket.on('prediction', (data) => {
 			console.log(data)
 			this.canvas.clear()
+			let baseLines = []
 			if(data["base_list"]){
 				for(let line of data["base_list"]){
 					let l = this.canvas.drawLine(line, "black")
 					//l.translate(paper.view.center)
+					baseLines.push(l)
 				}
 			}
 			if(data["ground_truth"]){
 				let l = this.canvas.drawLine(data["ground_truth"], "red")
 				//l.translate(paper.view.center)
 			}
+			if(data["ghost_lines"]){
+				for(let line of data["ghost_lines"]){
+					let l = this.canvas.drawLine(line, "grey")
+					l.opacity = 0.3
+					//l.translate(paper.view.center)
+				}
+			}
 			if(data["prediction"]){
 				if(Array.isArray(data["prediction"])){
 					for(let line of data["prediction"]){
 						let l = this.canvas.drawLine(line, "blue")
+						if(line["used_ids"] && !line["is_fixed"]){
+							console.log("USED IDS", line, line["is_fixed"])
+							for(let id of line["used_ids"]){
+								baseLines[id].strokeColor = "green"
+								baseLines[id].strokeWidth = 10
+								baseLines[id].opacity = 0.5
+								baseLines[id].strokeCap = "round"
+							}
+							
+							let c = new Path.Circle(l.position, this.canvas.config["max_dist"])
+							c.fillColor = "grey"
+							c.opacity = 0.5
+							c.sendToBack()
+							
+						}
 						//l.translate(paper.view.center)
 					}
 				}else{
@@ -70,6 +94,7 @@ export class PatternTrainer extends HTMLElement {
 				}
 				
 			}
+			
 			this.canvas.centerDrawing()
 		});
 		

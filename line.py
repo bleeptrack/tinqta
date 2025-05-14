@@ -10,7 +10,7 @@ class Line():
         self.latent_vectors = {}
         self.is_fixed = False
         self.dropout = 1
-        self.adaption_rate = 0.5
+        self.adaption_rate = 0.1
 
         if isinstance(points, torch.Tensor):
             self.points = Line._tensor2Points(points)
@@ -37,6 +37,9 @@ class Line():
     
     def diff(self, other):
         return torch.abs(torch.sum(torch.tensor([[point['x'] - other.points[i]['x'], point['y'] - other.points[i]['y']] for i, point in enumerate(self.points)], dtype=torch.float)))
+    
+    def pos_diff(self, other):
+        return abs(self.position['x'] - other.position['x'] + self.position['y'] - other.position['y'])
     
     def _points2Tensor(self):
         return torch.tensor([[point['x'], point['y']] for point in self.points], dtype=torch.float)
@@ -103,13 +106,18 @@ class Line():
         return x, edge_index
     
     def to_JSON(self):
-        return {
+        line = {
             "points": self.points,
             "scale": self.scale,
             "rotation": self.rotation,
             "position": self.position,
-            "position_type": self.position_type
+            "position_type": self.position_type,
         }
+        if hasattr(self, 'used_ids'):
+            line["used_ids"] = self.used_ids
+        if hasattr(self, 'is_fixed'):
+            line["is_fixed"] = self.is_fixed
+        return line
 
     # def get_total_tensor(self):
     #     total_position_points = self._points2Tensor()

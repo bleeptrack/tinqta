@@ -250,10 +250,12 @@ class PatternEncoder(torch.nn.Module):
         return torch.cat([global_mean_pool(x, batch_vector), global_add_pool(x, batch_vector)], dim=-1)
         #return global_add_pool(x, batch_vector)
         #return global_mean_pool(x, batch_vector)
-    def arrange_face(self, x, batch_vector):
+    def arrange_face(self, x, batch_vector, target_pos):
 
         if batch_vector is None:
             batch_vector = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+
+        
 
         # Get unique batches
         unique_batches = torch.unique(batch_vector)
@@ -267,8 +269,12 @@ class PatternEncoder(torch.nn.Module):
             batch_mask = batch_vector == batch
             # Get features for current batch
             batch_features = x[batch_mask]
-            # Calculate vector lengths of first 2 elements (x,y coordinates)
-            vector_lengths = torch.norm(batch_features[:, :2], dim=1)
+            #Get Positions for current batch
+            batch_pos = batch_features[:, 0:2]
+            #Calculate vector between positions and target position
+            vector_to_target = batch_pos - target_pos[batch]
+            #Calculate vector lengths 
+            vector_lengths = torch.norm(vector_to_target, dim=1)
             # Sort by vector length
             sorted_indices = torch.argsort(vector_lengths)
 
@@ -292,7 +298,8 @@ class PatternEncoder(torch.nn.Module):
     def forward(self, x, edge_index, batch_vector=None, target_pos=None, epoch=None):
 
 
-        x_face, _ = self.arrange_face(x, batch_vector)
+        x_face, _ = self.arrange_face(x, batch_vector, target_pos)
+        initial_x = x
         
         nodes_pos = x[:, 0:2]
         x = self.conv(x, edge_index).relu()
@@ -345,6 +352,10 @@ class PatternEncoder(torch.nn.Module):
         pos = self.pos_hidden1(torch.cat([target_pos, combined_readout], dim=-1)).relu()
         pos = self.pos_hidden2(pos).relu()
         pos = self.pos(pos)
+
+        #update 3 closest points to corrected position
+        x_face_updated, _ = self.arrange_face(initial_x, batch_vector, pos)
+        combined_readout = torch.cat([x_face_updated, initial_readout], dim=-1)
 
 
         vec = self.vec_hidden1(torch.cat([pos, combined_readout], dim=-1)).relu()

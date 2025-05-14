@@ -142,6 +142,7 @@ class GraphHandler:
     def clear(self):
         self.lines = []
         self.gen_step = []
+        self.ghost_lines = []
         self.pattern_trainer = None
         self.line_trainer = None
 
@@ -200,23 +201,73 @@ class GraphHandler:
             n.is_fixed = True
             self.lines.append(n)
 
-        #add 5 random lines
-        for i in range(1):
-            z = self.line_trainer.randomInitPoint()
-            line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-            line.update_position_from_reference({"x":0, "y":0})
-            self.lines.append(line)
-
         
 
         
 
+    def handle_ghost_lines(self):
+        print("lines before handling ghost lines", len(self.lines), "|ghosts:", len(self.ghost_lines))
+        diff_threshold = 100
         
+        
+        #for line in self.ghost_lines:
+            #print(line.get_pattern_z())
+        iterations = []
+
+         
+        for i, fixed_line in enumerate(self.lines):
+            
+            iteration_line = []
+            #add original line to the mean mix
+            iteration_line.append(fixed_line.get_pattern_z(center_position=fixed_line.position))
+            print(iteration_line[0])
+
+            #add ghost lines that are close to the original line to the mean mix
+            for ghost_line in self.ghost_lines:
+                if fixed_line.diff(ghost_line) < diff_threshold:
+                    
+                    ghost_line_z = ghost_line.get_pattern_z(center_position=fixed_line.position)
+                    iteration_line.append(ghost_line_z)
+                
+            
+            averaged_line_z = torch.stack(iteration_line, dim=0).mean(dim=0)
+            print(averaged_line_z)
+            print(fixed_line)
+            
+            averaged_line = self.decompose_node(averaged_line_z)
+            averaged_line.update_position_from_reference(fixed_line.position)
+            averaged_line.is_fixed = True
+            print(averaged_line)
+
+            iterations.append(averaged_line)
+
+
+        
+
+        self.lines = iterations
+        print("lines after handling ghost lines", len(self.lines))
+
+        
+                    
+    def remove_duplicate_lines(self):
+        i = 0
+        while i < len(self.lines):
+            j = i + 1
+            while j < len(self.lines):
+                if self.lines[i].diff(self.lines[j]) < 10:  # Using same threshold as in calculate_gen_step
+                    print("removing duplicate line", i, j)
+                    self.lines.pop(j)
+                else:
+                    j += 1
+            i += 1
 
     def calculate_gen_step(self):
         
         self.gen_step = []
-        diff_threshold = 0.01
+        diff_threshold = 0.001
+
+        if not hasattr(self, "ghost_lines"):
+            self.ghost_lines = []
         
 
 
@@ -227,32 +278,39 @@ class GraphHandler:
 
                 #print(len(self.lines))
                 
-                self.lines[i].adaption_rate = 0.1
+                
                 self.lines[i].dropout = 0
+
+                
                 
                 
 
                 data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=True)
                 if data is None:
                     print("line out of reference reach")
-                    exit()
+                    continue
 
                 if not hasattr(self.lines[i], "used_ids"):
                     self.lines[i].used_ids = data[0].used_ids
                     data = data[0]
                 else:
-                    print(self.lines[i].used_ids)
+                    #print(len(data), "line used ids", [ d.used_ids for d in data ])
                     
-                    """ data_filtered = [d for d in data if all(used_id in d.used_ids for used_id in self.lines[i].used_ids)]
+                    
+                    data_filtered = [d for d in data if all(used_id in d.used_ids for used_id in self.lines[i].used_ids)]
                     if len(data_filtered) > 0:
-                        print("choosing options", [d.used_ids for d in data_filtered])
+                        #print("choosing options", [d.used_ids for d in data_filtered])
                         if self.lines[i].stopped: 
                             if len(data_filtered) > 1:
                                 print("choosing second option", data_filtered[1].used_ids)
+                                
+                                self.ghost_lines.append(self.lines[i])
+                                print("creating ghost line. Now:", len(self.ghost_lines))
                                 data = data_filtered[1]
+                                
                             else:
                                 print("DONE")
-                                #exit()
+                                return False
                                 data = data_filtered[0]
                         else:
                             
@@ -260,13 +318,12 @@ class GraphHandler:
                     else:
                         print("no data found for old ids", self.lines[i].used_ids)
                         data = data[0]
-                        print("using new data", data.used_ids) """
-
-                    data = data[0]
+                        print("using new data", data.used_ids)
+                    
                 
                 #flexi_rate = (self.lines[i].adaption_rate/len(self.lines[i].used_ids))
                 flexi_rate = self.lines[i].adaption_rate
-                print("data", data.used_ids, self.lines[i].used_ids, flexi_rate)
+                #print("data", data.used_ids, self.lines[i].used_ids, flexi_rate)
                 previous_line_z = self.lines[i].get_pattern_z(center_position=data.center_point)
                 
                 
@@ -277,26 +334,73 @@ class GraphHandler:
                     
                 line = self.decompose_node(adapted_z)
                 line.update_position_from_reference(data.center_point)
+
                 line.used_ids = data.used_ids
+                line.adaption_rate = flexi_rate
                
-                if self.lines[i].diff(line) < diff_threshold:
-                    print("diff reached:", self.lines[i].diff(line))
+                if self.lines[i].pos_diff(line) < diff_threshold:
+                    print("pos diff reached:", self.lines[i].pos_diff(line))
                     line.stopped = True
                 else:
                     line.stopped = False
-                        
+
+                if not hasattr(self.lines[i], "history"):
+                    self.lines[i].history = []
+                    self.lines[i].last_history = []
+                    self.lines[i].wiggle_count = 0
+                self.lines[i].history.append(line.used_ids)
+                if len(self.lines[i].history) > 50:
+                    self.lines[i].history.pop(0)
+                line.history = self.lines[i].history
+                line.last_history = self.lines[i].last_history
+                line.wiggle_count = self.lines[i].wiggle_count
+
+                if len(line.history) > 1 and line.history[-1] != line.history[-2]:
+                    count1 = line.history.count(line.history[-1])
+                    count2 = line.history.count(line.history[-2])
+                    unique_elements = len([list(x) for x in set(tuple(l) for l in line.history)])
+                    print("history", unique_elements, "count of last:", count1, count2, line.last_history)
+                    if len(line.last_history) > 0:
+                        wiggle_diff = (line.last_history[0]-count2 + line.last_history[1]-count1)
+                        print("wiggle diff", wiggle_diff)
+                        if wiggle_diff < 2:
+                            line.wiggle_count += 1
+                            print("WIGGLE DETECTED", line.wiggle_count)
+                            if line.wiggle_count > 20:
+                                print("WIGGLE STOP")
+                                line.stopped = False
+                                print("adding wiggle line to ghost lines")
+                                self.ghost_lines.append(line)
+                                continue
+                            #line.stopped = True
+                    line.last_history = [count1, count2]
+                    
 
                 self.gen_step.append(line)
             else:
                 self.gen_step.append(self.lines[i])
 
        
+        if all(line.is_fixed for line in self.lines):
+            print("ALL LINES FIXED")
+            return False
            
 
-        return self.gen_step
+        return True
     
     def apply_gen_step(self):
         self.lines = [line for line in self.gen_step]
+        
+    def start_new_line(self):
+        for line in self.lines:
+            line.is_fixed = True
+
+        z = self.line_trainer.randomInitPoint()
+        line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
+        line.update_position_from_reference(random.choice(self.lines).position)
+        self.lines.append(line)
+        self.ghost_lines = []
+        
     
     def get_path_name(self, name, type_name):
         return osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', name +'-'+ type_name +'.pt')
@@ -430,10 +534,13 @@ class GraphHandler:
 
         dists = self.get_distance_matrix()
         dists = dists * (dists < max_dist)
+        
         sorted_dists, indices = torch.sort(dists)
 
         current = sorted_dists[pred_id]
+       
         current_ids = indices[pred_id]
+        
         not_zero = current!=0
         current = current[not_zero]
         ids = current_ids[not_zero]
@@ -463,6 +570,7 @@ class GraphHandler:
             combinations = torch.tensor(list(product([False, True], repeat=len(ids))))
             #combinations = combinations[combinations.sum(dim=1) <= 3]
             combinations = combinations[combinations.any(dim=1)]
+            combinations = combinations.flip(dims=[1])  # Reverse each combination
 
             data_list = []
 
@@ -471,6 +579,7 @@ class GraphHandler:
                 data = self.create_pattern_graph(pred_id, combo_ids, latent_name)
                 data.used_ids = combo_ids.tolist()
                 data_list.append(data)
+            
             return data_list
 
         else:    
