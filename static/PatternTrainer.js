@@ -144,7 +144,11 @@ export class PatternTrainer extends HTMLElement {
 					display: block; /* For Firefox */
 					color: grey;
 				}
-				
+				#button-container{
+					display: flex;
+					flex-direction: row;
+					gap: 1vh;
+				}
 			</style>
 			
 			<div id="container">
@@ -153,12 +157,13 @@ export class PatternTrainer extends HTMLElement {
 				<div id="canvas-container">
 					<button id="undo" class="material-symbols-outlined scribble">undo</button>
 				</div>
-				
-				<button id="train" class="scribble">train</button>
-				<button id="test-lines" class="scribble">test lines</button>
-				<button id="pattern-sample" class="scribble">get pattern sample</button>
-				<button id="train-pattern" class="scribble">train pattern</button>
-				<button id="generate-pattern" class="scribble">generate pattern</button>
+				<div id="button-container">
+					<button id="train" class="scribble">train</button>
+					<button id="test-lines" class="scribble">test lines</button>
+					<button id="pattern-sample" class="scribble">get pattern sample</button>
+					<button id="train-pattern" class="scribble">train pattern</button>
+					<button id="generate-pattern" class="scribble">generate pattern</button>
+				</div>
 			</div>
 		`;
 

@@ -18,8 +18,8 @@ export class PaperCanvas extends HTMLElement {
 			<style>
 				
 				canvas[resize] {
-					width: 100%;
-					height: 100%;
+					width: 960px;
+					height: 540px;
 				}	
 			</style>
 			
