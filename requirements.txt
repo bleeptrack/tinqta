@@ -4,3 +4,4 @@ flask-socketio
 torch
 torch-geometric
 pyopenssl
+scipy

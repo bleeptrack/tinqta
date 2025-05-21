@@ -105,7 +105,11 @@ class GraphDatasetHandler():
             
 
         print("SAVING DATA", len(self.data), "originals:", len(self.original_data))
-        torch.save(self, osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'-'+ self.level +'.pt'))
+        torch.save(
+            self,
+            osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'-'+ self.level +'.pt'),
+            _use_new_zipfile_serialization=True  # Use newer format
+        )
 
     def __len__(self):
         return len(self.data)
@@ -133,7 +137,19 @@ class GraphDatasetHandler():
     @classmethod
     def load_data(cls, name, level):
         print("LOADING DATA")
-        return torch.load(osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', name +'-'+ level +'.pt'))
+        try:
+            # Try loading with weights_only=False to handle the new format
+            return torch.load(
+                osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', name +'-'+ level +'.pt'),
+                weights_only=False
+            )
+        except Exception as e:
+            print(f"Error loading data: {e}")
+            # If that fails, try the old format with map_location
+            return torch.load(
+                osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', name +'-'+ level +'.pt'),
+                map_location=torch.device('cpu')
+            )
 
 class GraphHandler:
     def __init__(self):
@@ -207,7 +223,7 @@ class GraphHandler:
 
     def handle_ghost_lines(self):
         print("lines before handling ghost lines", len(self.lines), "|ghosts:", len(self.ghost_lines))
-        diff_threshold = 100
+        diff_threshold = 1
         
         
         #for line in self.ghost_lines:
@@ -224,9 +240,10 @@ class GraphHandler:
 
             #add ghost lines that are close to the original line to the mean mix
             for ghost_line in self.ghost_lines:
-                if fixed_line.diff(ghost_line) < diff_threshold:
-                    
-                    ghost_line_z = ghost_line.get_pattern_z(center_position=fixed_line.position)
+                ghost_line_z = ghost_line.get_pattern_z(center_position=fixed_line.position)
+
+                diff = torch.sum(torch.abs(torch.sub(iteration_line[0], ghost_line_z)))
+                if diff < diff_threshold:
                     iteration_line.append(ghost_line_z)
                 
             

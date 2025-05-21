@@ -411,7 +411,7 @@ class LineTrainer():
         self.model = self.model.to(device)
         if osp.exists(self.model_path):
             print("LINE MODEL EXISTS. LOADING...", self.model_path)
-            self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu')))
+            self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu'), weights_only=False))
         ##self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         ##self.scheduler = ReduceLROnPlateau(self.optimizer, patience=60, cooldown=20)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0005)
@@ -698,7 +698,7 @@ class PatternTrainer():
         self.model = self.model.to(device)
         if osp.exists(self.model_path):
             print("PATTERNMODEL EXISTS. LOADING...", self.model_path)
-            self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu')))
+            self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu'), weights_only=False))
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         self.scheduler = None
 
