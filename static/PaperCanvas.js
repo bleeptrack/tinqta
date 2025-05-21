@@ -7,6 +7,8 @@ export class PaperCanvas extends HTMLElement {
 	
 		this.shadow = this.attachShadow({ mode: 'open' });
 		this.saveAnimation = true
+		this.recordedData = []
+		this.recording = false
 
 		const container = document.createElement('template');
 
@@ -27,11 +29,55 @@ export class PaperCanvas extends HTMLElement {
 				<button id="downloadSvg">Download SVG</button>
 				<input type="file" id="uploadSvg" accept=".json" style="display: none;">
 				<label for="uploadSvg" class="upload-button">Upload SVG</label>
+				<button id="record">Record</button>
 			</div>
 		`;
 
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
+
+		this.shadow.getElementById('record').addEventListener('click', () => {
+			this.recording = !this.recording
+
+			if(this.recording){
+				const canvas = this.shadow.getElementById('paperCanvas');
+				
+				const stream = canvas.captureStream(60);
+				const mediaRecorder = new MediaRecorder(stream, {
+					mimeType: 'video/webm;codecs=vp9',
+					videoBitsPerSecond: 5000000 // 5Mbps
+				});
+
+				mediaRecorder.ondataavailable = (event) => {
+					if (event.data.size > 0) {
+						this.recordedData.push(event.data);
+					}
+				};
+
+				mediaRecorder.start(100); // Collect data every 100ms
+				this.mediaRecorder = mediaRecorder;
+				
+			}else{
+				console.log("STOP RECORDING and download")
+				
+				this.mediaRecorder.onstop = () => {
+					const blob = new Blob(this.recordedData, { type: 'video/webm' });
+					const url = URL.createObjectURL(blob);
+					const downloadLink = document.createElement('a');
+					downloadLink.href = url;
+					downloadLink.download = 'recording.webm';
+					document.body.appendChild(downloadLink);
+					downloadLink.click();
+					document.body.removeChild(downloadLink);
+					URL.revokeObjectURL(url);
+					this.recordedData = [];
+				};
+				this.mediaRecorder.stop();
+			}
+
+			
+			this.shadow.getElementById('record').textContent = this.recording ? "Stop" : "Record"
+		})
 		
 
 		this.shadow.getElementById('downloadSvg').addEventListener('click', () => {
@@ -77,11 +123,13 @@ export class PaperCanvas extends HTMLElement {
 	}
 
 	clear(){
-		paper.project.activeLayer.removeChildren()
+		paper.project.layers["lines"].removeChildren()
+		console.log("layers", paper.project.layers, paper.project.layers["lines"].children.length)
 	}
 
 	centerDrawing(){
 		paper.view.center = paper.project.activeLayer.bounds.center
+		paper.project.layers["background"].position = paper.view.center
 	}
 	
 	setPlaceholder(){
@@ -103,6 +151,17 @@ export class PaperCanvas extends HTMLElement {
 		paper.install(window)
 		let canvas = this.shadow.getElementById('paperCanvas');
 		paper.setup(canvas);
+
+		paper.project.activeLayer.name = "lines"
+
+		let bgLayer = new paper.Layer({name: "background"})
+		
+		let bg = new paper.Path.Rectangle(paper.view.bounds)
+		bg.fillColor = 'white'
+		bgLayer.sendToBack()
+		paper.project.layers["lines"].activate()
+		
+		
 		
 		let tool = new Tool()
 		tool.minDistance = 6
@@ -173,9 +232,9 @@ export class PaperCanvas extends HTMLElement {
 	}
 	
 	createMatchingLines(){
-		paper.project.layers[0].activate()
-		let ids = paper.project.layers[0].children.length
-		this.lines2process = [...paper.project.layers[0].children]
+		paper.project.layers["lines"].activate()
+		let ids = paper.project.layers["lines"].children.length
+		this.lines2process = [...paper.project.layers["lines"].children]
 		
 		this.lines2process.forEach(l => {
 			if(l.length > 0){
@@ -186,7 +245,7 @@ export class PaperCanvas extends HTMLElement {
 	}
 	
 	interpolationData(data, doInterpolation){
-		paper.project.layers[0].activate()
+		paper.project.layers["lines"].activate()
 		let group = []
 		for(let [idx, match] of data.list.entries()){
 			
@@ -246,8 +305,8 @@ export class PaperCanvas extends HTMLElement {
 			}
 			
 		}
-		paper.project.layers[0].removeChildren()
-		paper.project.layers[0].addChildren(group)
+		paper.project.layers["lines"].removeChildren()
+		paper.project.layers["lines"].addChildren(group)
 		
 	}
 	
