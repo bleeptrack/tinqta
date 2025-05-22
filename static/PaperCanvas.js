@@ -159,6 +159,7 @@ export class PaperCanvas extends HTMLElement {
 		let bg = new paper.Path.Rectangle(paper.view.bounds)
 		bg.fillColor = 'white'
 		bgLayer.sendToBack()
+		let artLayer = new paper.Layer({name: "art"})
 		paper.project.layers["lines"].activate()
 		
 		
@@ -335,8 +336,12 @@ export class PaperCanvas extends HTMLElement {
 		l.remove()
 	}
 
-	drawLine(lineJSON, color, smoothing){
+	drawLine(lineJSON, color, smoothing, layer){
 		//console.log("DRAWING LINE", lineJSON)
+		if(layer){
+			layer.activate()
+		}
+
 		let path = new Path({segments: lineJSON.points})
 		path.strokeColor = color
 		path.pivot = path.firstSegment.point
@@ -357,6 +362,11 @@ export class PaperCanvas extends HTMLElement {
 		if (smoothing) {
 			path.simplify()
 		}
+
+		if(layer){
+			paper.project.layers["lines"].activate()
+		}
+
 		return path
 	}
 	

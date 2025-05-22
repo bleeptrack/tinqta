@@ -96,6 +96,7 @@ export class PatternTrainer extends HTMLElement {
 			}
 			
 			this.canvas.centerDrawing()
+			//this.drawArt(data)
 		});
 		
 		
@@ -210,6 +211,22 @@ export class PatternTrainer extends HTMLElement {
 		
 	}
 
+	drawArt(data){
+		paper.project.layers["lines"].removeChildren()
+
+		if(data["prediction"]){
+			if(Array.isArray(data["prediction"])){
+				for(let line of data["prediction"]){
+					if(!line["is_fixed"]){
+						let l = this.canvas.drawLine(line, "blue", true, paper.project.layers["art"])
+						l.strokeWidth = 10
+						l.opacity = 0.005
+					}
+				}
+			}
+			
+		}
+	}
 
 	connectedCallback() {
 		window.downloadLines = this.saveLines.bind(this)
