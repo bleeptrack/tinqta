@@ -159,6 +159,7 @@ class GraphHandler:
         self.lines = []
         self.gen_step = []
         self.ghost_lines = []
+        self.original_lines = []
         self.pattern_trainer = None
         self.line_trainer = None
 
@@ -169,6 +170,18 @@ class GraphHandler:
         # rotation: float
         self.lines = []
         self.add_lines(data)
+
+
+    def calculate_original_lines(self):
+        original_lines = self.line_trainer.dataset.original_data
+        for o in original_lines: 
+            l = Line(o.x, o.scale, o.rotation, o.position)
+            x, edge_index = l.create_line_graph()
+            z = self.line_trainer.encodeLineVector(x, edge_index)
+            l.add_latent_vector(z, self.line_trainer.name)
+            self.original_lines.append(l)
+        print("original lines", len(self.original_lines))
+        
             
     def add_lines(self, data):
         for line in data:
@@ -277,6 +290,25 @@ class GraphHandler:
                 else:
                     j += 1
             i += 1
+
+    def reject_abnormal_lines(self):
+        threshhold = 0.1
+        accepted_lines = []
+        nr_lines = len(self.lines)
+
+        print("rejecting abnormal lines. Current lines:", len(self.lines))
+        for line in self.lines:
+            for original_line in self.original_lines:
+                if line.latent_line_diff(original_line) < threshhold:
+                    accepted_lines.append(line)
+                    break
+                    
+
+        if len(accepted_lines) < nr_lines:
+            print("not all lines were accepted. Rejecting", nr_lines-len(accepted_lines), "lines")
+        self.lines = accepted_lines
+
+   
 
     def calculate_gen_step(self):
         

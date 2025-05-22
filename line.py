@@ -38,6 +38,16 @@ class Line():
     def diff(self, other):
         return torch.abs(torch.sum(torch.tensor([[point['x'] - other.points[i]['x'], point['y'] - other.points[i]['y']] for i, point in enumerate(self.points)], dtype=torch.float)))
     
+    def latent_line_diff(self, other, latent_name=None):
+        if latent_name is None:
+            if len(self.latent_vectors.keys()) == 1:
+                latent_name = list(self.latent_vectors.keys())[0]
+            else:
+                raise ValueError("No latent name provided to fetch latent vector")
+        z1 = self.latent_vectors[latent_name]
+        z2 = other.latent_vectors[latent_name]
+        return torch.abs(torch.sum(z1 - z2))
+    
     def pos_diff(self, other):
         return abs(self.position['x'] - other.position['x'] + self.position['y'] - other.position['y'])
     
