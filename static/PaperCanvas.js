@@ -124,7 +124,7 @@ export class PaperCanvas extends HTMLElement {
 
 	clear(){
 		paper.project.layers["lines"].removeChildren()
-		console.log("layers", paper.project.layers, paper.project.layers["lines"].children.length)
+		
 	}
 
 	centerDrawing(){

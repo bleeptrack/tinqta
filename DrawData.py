@@ -188,7 +188,6 @@ class GraphHandler:
             position = line['position'] if 'position' in line else None
             self.lines.append(Line(line['points'], line['scale'], line['rotation'], position=position))
 
-            print("lines added", self.lines[-1])
 
     def set_default_trainers(self, pattern_trainer=None, line_trainer=None):
         self.pattern_trainer = pattern_trainer
@@ -235,6 +234,7 @@ class GraphHandler:
         
 
     def handle_ghost_lines(self):
+        
         print("lines before handling ghost lines", len(self.lines), "|ghosts:", len(self.ghost_lines))
         diff_threshold = 1
         
@@ -249,7 +249,7 @@ class GraphHandler:
             iteration_line = []
             #add original line to the mean mix
             iteration_line.append(fixed_line.get_pattern_z(center_position=fixed_line.position))
-            print(iteration_line[0])
+          
 
             #add ghost lines that are close to the original line to the mean mix
             for ghost_line in self.ghost_lines:
@@ -261,13 +261,12 @@ class GraphHandler:
                 
             
             averaged_line_z = torch.stack(iteration_line, dim=0).mean(dim=0)
-            print(averaged_line_z)
-            print(fixed_line)
+
             
             averaged_line = self.decompose_node(averaged_line_z)
             averaged_line.update_position_from_reference(fixed_line.position)
             averaged_line.is_fixed = True
-            print(averaged_line)
+          
 
             iterations.append(averaged_line)
 
@@ -280,19 +279,26 @@ class GraphHandler:
         
                     
     def remove_duplicate_lines(self):
+        message = ""
         i = 0
         while i < len(self.lines):
             j = i + 1
             while j < len(self.lines):
                 if self.lines[i].diff(self.lines[j]) < 10:  # Using same threshold as in calculate_gen_step
                     print("removing duplicate line", i, j)
+                    message += "removing duplicate line " + str(i) + " " + str(j) + "\n"
                     self.lines.pop(j)
                 else:
                     j += 1
             i += 1
 
+        if message:
+            return message
+        else:
+            return None
+        
     def reject_abnormal_lines(self):
-        threshhold = 0.1
+        threshhold = 0.4
         accepted_lines = []
         nr_lines = len(self.lines)
 
@@ -304,9 +310,13 @@ class GraphHandler:
                     break
                     
 
+        self.lines = accepted_lines
         if len(accepted_lines) < nr_lines:
             print("not all lines were accepted. Rejecting", nr_lines-len(accepted_lines), "lines")
-        self.lines = accepted_lines
+            return "not all lines were accepted. Rejecting " + str(nr_lines-len(accepted_lines)) + " lines"
+        else:
+            return None
+        
 
    
 

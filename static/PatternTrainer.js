@@ -34,6 +34,11 @@ export class PatternTrainer extends HTMLElement {
 			}
 		})
 
+		this.socket.on('toast', (data) => {
+			console.log(`MESSAGE: ${data.message}`)
+			
+		})
+
 		this.socket.on('result', (data) => {
 			console.log(data)
 			for(let idx in data.list){
@@ -46,7 +51,7 @@ export class PatternTrainer extends HTMLElement {
 		});
 
 		this.socket.on('prediction', (data) => {
-			console.log(data)
+			
 			this.canvas.clear()
 			let baseLines = []
 			if(data["base_list"]){
@@ -72,7 +77,7 @@ export class PatternTrainer extends HTMLElement {
 					for(let line of data["prediction"]){
 						let l = this.canvas.drawLine(line, "blue")
 						if(line["used_ids"] && !line["is_fixed"]){
-							console.log("USED IDS", line, line["is_fixed"])
+							
 							for(let id of line["used_ids"]){
 								baseLines[id].strokeColor = "green"
 								baseLines[id].strokeWidth = 10
