@@ -213,21 +213,27 @@ class GraphHandler:
         if patternTrainer is None:
             patternTrainer = self.pattern_trainer
 
-        data = patternTrainer.dataset.get_random_item()
-        self.test_data = data
-        #pred = self.decompose_node(data.x)
-        #self.lines.append(pred)
+        distance = 50
+        #for i in range(3):
+        for i in range(3):
+            for j in range(3):
 
-        noisy_data = data.y.clone() + torch.randn(data.y.size()) * 0.01
-        ground_truth = self.decompose_node(noisy_data)
-        ground_truth.update_position_from_reference({"x":0, "y":0})
-        ground_truth.is_fixed = True
-        self.lines.append(ground_truth)
-        for i in range(data.x.size()[0]):
-            n = self.decompose_node(data.x[i])
-            n.update_position_from_reference({"x":0, "y":0})
-            n.is_fixed = True
-            self.lines.append(n)
+                data = patternTrainer.dataset.get_random_item()
+                self.test_data = data
+                #pred = self.decompose_node(data.x)
+                #self.lines.append(pred)
+                reference_position = {"x":i*(distance + config['max_dist']*2), "y":j*(distance + config['max_dist']*2)}
+
+                noisy_data = data.y.clone() + torch.randn(data.y.size()) * 0.01
+                ground_truth = self.decompose_node(noisy_data)
+                ground_truth.update_position_from_reference(reference_position)
+                ground_truth.is_fixed = True
+                self.lines.append(ground_truth)
+                for i in range(data.x.size()[0]):
+                    n = self.decompose_node(data.x[i])
+                    n.update_position_from_reference(reference_position)
+                    n.is_fixed = True
+                    self.lines.append(n)
 
         
 
@@ -504,6 +510,7 @@ class GraphHandler:
 
     
     def create_pattern_graph(self, pred_id, ids, latent_name=None):
+        
         if len(ids) == 0:
             raise ValueError("no ids given to create pattern graph")
 
@@ -517,9 +524,13 @@ class GraphHandler:
             print("removed prediction id from ids", pred_id, ids)
             ids = ids[ids != pred_id]
 
+        if len(ids) == 0:
+            raise ValueError("No IDs left to create pattern graph", pred_id, ids)
+        
         centers_X = [self.lines[i].position['x'] for i in ids]
         centers_Y = [self.lines[i].position['y'] for i in ids]
         center_point = { "x": sum(centers_X)/len(centers_X), "y": sum(centers_Y)/len(centers_Y) }
+        ###### hier fliegt der divide by zero fehler
         
 
         #position of each node
@@ -635,6 +646,9 @@ class GraphHandler:
 
             for combo in combinations:
                 combo_ids = ids[combo]
+                if len(combo_ids) == 1 and combo_ids[0] == pred_id:
+                    print("skipping combination with only pred_id", combo_ids, pred_id)
+                    continue
                 data = self.create_pattern_graph(pred_id, combo_ids, latent_name)
                 data.used_ids = combo_ids.tolist()
                 data_list.append(data)

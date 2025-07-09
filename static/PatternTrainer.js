@@ -89,18 +89,20 @@ export class PatternTrainer extends HTMLElement {
 							c.fillColor = "grey"
 							c.opacity = 0.5
 							c.sendToBack()
+							this.canvas.centerDrawing(c.position)
 							
 						}
 						//l.translate(paper.view.center)
 					}
 				}else{
 					let l = this.canvas.drawLine(data["prediction"], "blue")
+					
 					//l.translate(paper.view.center)
 				}
 				
 			}
 			
-			this.canvas.centerDrawing()
+			//this.canvas.centerDrawing()
 			//this.drawArt(data)
 		});
 		

@@ -127,8 +127,12 @@ export class PaperCanvas extends HTMLElement {
 		
 	}
 
-	centerDrawing(){
-		paper.view.center = paper.project.activeLayer.bounds.center
+	centerDrawing(position){
+		if(position){
+			paper.view.center = position
+		}else{
+			paper.view.center = paper.project.activeLayer.bounds.center
+		}
 		paper.project.layers["background"].position = paper.view.center
 	}
 	
