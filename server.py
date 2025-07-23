@@ -323,9 +323,9 @@ def generate_pattern(data):
             gh.apply_gen_step()
             socketio.sleep(0.01) 
 
-        toast(gh.remove_duplicate_lines())
-        toast(gh.reject_abnormal_lines())
-        gh.handle_ghost_lines()
+        #toast(gh.remove_duplicate_lines())
+        #toast(gh.reject_abnormal_lines())
+        #gh.handle_ghost_lines()
 
         emit('prediction', info)
         generate_pattern(data) # 50ms delay

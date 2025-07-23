@@ -215,8 +215,8 @@ class GraphHandler:
 
         distance = 50
         #for i in range(3):
-        for i in range(3):
-            for j in range(3):
+        for i in range(1):
+            for j in range(1):
 
                 data = patternTrainer.dataset.get_random_item()
                 self.test_data = data
@@ -329,7 +329,7 @@ class GraphHandler:
     def calculate_gen_step(self):
         
         self.gen_step = []
-        diff_threshold = 0.001
+        diff_threshold = 0.01
 
         if not hasattr(self, "ghost_lines"):
             self.ghost_lines = []
@@ -381,7 +381,8 @@ class GraphHandler:
                             
                             data = data_filtered[0]
                     else:
-                        print("no data found for old ids", self.lines[i].used_ids)
+
+                        print("no data found for old ids (went out of reach of the old id set)", self.lines[i].used_ids)
                         data = data[0]
                         print("using new data", data.used_ids)
                     
@@ -402,6 +403,7 @@ class GraphHandler:
 
                 line.used_ids = data.used_ids
                 line.adaption_rate = flexi_rate
+               
                
                 if self.lines[i].pos_diff(line) < diff_threshold:
                     print("pos diff reached:", self.lines[i].pos_diff(line))
@@ -457,6 +459,10 @@ class GraphHandler:
         self.lines = [line for line in self.gen_step]
         
     def start_new_line(self):
+        Line.cluster_and_average(self.ghost_lines + self.lines)
+        for ghost_line in self.ghost_lines:
+            self.lines.append(ghost_line)
+
         for line in self.lines:
             line.is_fixed = True
 
