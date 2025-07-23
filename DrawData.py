@@ -18,7 +18,7 @@ class GraphDataset(InMemoryDataset):
 
 
         super().__init__(root, transform, pre_transform, pre_filter)
-        self.data, self.slices = torch.load(self.processed_paths[0])
+        self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
 
         print(self.name)
 
@@ -40,7 +40,7 @@ class GraphDataset(InMemoryDataset):
 
     def process(self):
         # Read data into huge `Data` list.
-        complete_data = torch.load(osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'.pt'))
+        complete_data = torch.load(osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'.pt'), weights_only=False)
 
         print("handling data at level ", self.level)
 
