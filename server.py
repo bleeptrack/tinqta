@@ -290,8 +290,10 @@ def generate_pattern(data):
         pt = PatternTrainer(data['name'])
         gh.clear()
         gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
-        gh.init_original()
+        #gh.init_original()
         gh.calculate_original_lines()
+
+        gh.random_fill()
 
         info = {}
         info["base_list"] = [line.to_JSON() for line in gh.lines]
@@ -324,7 +326,7 @@ def generate_pattern(data):
             socketio.sleep(0.01) 
 
         #toast(gh.remove_duplicate_lines())
-        #toast(gh.reject_abnormal_lines())
+        
         #gh.handle_ghost_lines()
 
         emit('prediction', info)

@@ -8,6 +8,8 @@ from line import Line
 from itertools import product
 import torch_geometric.transforms as T
 import random
+from sklearn.cluster import DBSCAN
+import numpy as np
 
 
 """ #Loads the dataset and handles delivery
@@ -207,7 +209,20 @@ class GraphHandler:
             self.lines.append(line)
             #lines.append(prediction2obj(line, lineTrainer))
 
-    def init_original(self, lineTrainer=None, patternTrainer=None):
+    def init_noisy_line_at_position(self, position, lineTrainer=None, patternTrainer=None, noise_level=0.01):
+        if lineTrainer is None:
+            lineTrainer = self.line_trainer
+        if patternTrainer is None:
+            patternTrainer = self.pattern_trainer
+        
+        sample = patternTrainer.dataset.get_random_item()
+        noisy_data = sample.y.clone() + torch.randn(sample.y.size()) * noise_level
+        ground_truth = self.decompose_node(noisy_data)
+        ground_truth.update_position_from_reference(position)
+        ground_truth.is_fixed = True
+        return ground_truth
+
+    def init_original(self, lineTrainer=None, patternTrainer=None, noise_level=0.01):
         if lineTrainer is None:
             lineTrainer = self.line_trainer
         if patternTrainer is None:
@@ -222,9 +237,9 @@ class GraphHandler:
                 self.test_data = data
                 #pred = self.decompose_node(data.x)
                 #self.lines.append(pred)
-                reference_position = {"x":i*(distance + config['max_dist']*2), "y":j*(distance + config['max_dist']*2)}
+                reference_position = {"x":i*(distance + config['max_dist']*3), "y":j*(distance + config['max_dist']*3)}
 
-                noisy_data = data.y.clone() + torch.randn(data.y.size()) * 0.01
+                noisy_data = data.y.clone() + torch.randn(data.y.size()) * noise_level
                 ground_truth = self.decompose_node(noisy_data)
                 ground_truth.update_position_from_reference(reference_position)
                 ground_truth.is_fixed = True
@@ -234,6 +249,39 @@ class GraphHandler:
                     n.update_position_from_reference(reference_position)
                     n.is_fixed = True
                     self.lines.append(n)
+
+    def random_fill(self, fieldX=800, fieldY=800, retry_count=300, lineTrainer=None, patternTrainer=None, noise_level=0.01):
+        if lineTrainer is None:
+            lineTrainer = self.line_trainer
+        if patternTrainer is None:
+            patternTrainer = self.pattern_trainer
+
+        count = retry_count
+
+        max_dist = config['max_dist']
+        
+        while count > 0:
+            sample = patternTrainer.dataset.get_random_item()
+            noisy_data = sample.y.clone() + torch.randn(sample.y.size()) * noise_level
+            ground_truth = self.decompose_node(noisy_data)
+            ground_truth.update_position_from_reference({"x":random.randint(0, fieldX), "y":random.randint(0, fieldY)})
+            ground_truth.is_fixed = True
+            self.lines.append(ground_truth)
+
+            dist_matrix = self.get_distance_matrix()
+            new_dist = dist_matrix[-1][:-1]
+            
+            print("new_dist", new_dist)
+            # Check if any of the distances in new_dist is smaller than max_dist
+            if any(d < max_dist for d in new_dist) and len(self.lines) > 1:
+                print("At least one distance is smaller than max_dist.")
+                self.lines.pop(-1)
+                count -= 1
+
+            print("retry count", count)
+
+
+
 
         
 
@@ -303,20 +351,30 @@ class GraphHandler:
         else:
             return None
         
+    def get_closest_original_line(self, line):
+        closest_line = None
+        closest_diff = float('inf')
+        for original_line in self.original_lines:
+            diff = line.latent_line_diff(original_line)
+            if diff < closest_diff:
+                closest_diff = diff
+        
+        return closest_line, closest_diff
+        
     def reject_abnormal_lines(self):
-        threshhold = 0.4
+        threshhold = 0.8
         accepted_lines = []
-        nr_lines = len(self.lines)
+        nr_lines = len(self.ghost_lines)
 
-        print("rejecting abnormal lines. Current lines:", len(self.lines))
-        for line in self.lines:
-            for original_line in self.original_lines:
-                if line.latent_line_diff(original_line) < threshhold:
-                    accepted_lines.append(line)
-                    break
+        print("rejecting abnormal lines. Current lines:", len(self.ghost_lines))
+        for line in self.ghost_lines:
+            closest_original_line, closest_diff = self.get_closest_original_line(line)
+            print("DIFF", closest_diff)
+            if closest_diff < threshhold:
+                accepted_lines.append(line)
                     
 
-        self.lines = accepted_lines
+        self.ghost_lines = accepted_lines
         if len(accepted_lines) < nr_lines:
             print("not all lines were accepted. Rejecting", nr_lines-len(accepted_lines), "lines")
             return "not all lines were accepted. Rejecting " + str(nr_lines-len(accepted_lines)) + " lines"
@@ -352,7 +410,9 @@ class GraphHandler:
 
                 data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=True)
                 if data is None:
-                    print("line out of reference reach")
+                    print("line out of reference reach. Setting a new line here")
+                    new_line = self.init_noisy_line_at_position(self.lines[i].position)
+                    self.lines[i] = new_line
                     continue
 
                 if not hasattr(self.lines[i], "used_ids"):
@@ -433,11 +493,12 @@ class GraphHandler:
                         if wiggle_diff < 2:
                             line.wiggle_count += 1
                             print("WIGGLE DETECTED", line.wiggle_count)
+                            line.adaption_rate *= 0.9
                             if line.wiggle_count > 20:
                                 print("WIGGLE STOP")
                                 line.stopped = False
-                                print("adding wiggle line to ghost lines")
-                                self.ghost_lines.append(line)
+                                #print("adding wiggle line to ghost lines")
+                                #self.ghost_lines.append(line)
                                 continue
                             #line.stopped = True
                     line.last_history = [count1, count2]
@@ -459,18 +520,32 @@ class GraphHandler:
         self.lines = [line for line in self.gen_step]
         
     def start_new_line(self):
-        Line.cluster_and_average(self.ghost_lines + self.lines)
-        for ghost_line in self.ghost_lines:
-            self.lines.append(ghost_line)
+
+
+        #rejection funktioniert nicht gut rein über den latenten vektor
+        self.reject_abnormal_lines()
+
+        #for ghost_line in self.ghost_lines:
+        #    self.lines.append(ghost_line)
+
+        
+        #elf.lines = self.cluster_and_average(func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=100, message="latent first")
+        #self.lines = self.cluster_and_average(func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=30, eps2=2, message="pos first")
+
+        #reject again if an average makes no sense
+        self.reject_abnormal_lines()
 
         for line in self.lines:
-            line.is_fixed = True
+            if line.is_fixed is False:
+                self.ghost_lines.append(line)
+                self.lines.remove(line)
+            #line.is_fixed = True
 
         z = self.line_trainer.randomInitPoint()
         line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-        line.update_position_from_reference(random.choice(self.lines).position)
+        line.update_position_from_reference({"x":random.randint(0, 800), "y":random.randint(0, 800)})
         self.lines.append(line)
-        self.ghost_lines = []
+        #self.ghost_lines = []
         
     
     def get_path_name(self, name, type_name):
@@ -608,6 +683,8 @@ class GraphHandler:
         if latent_name is None:
             latent_name = self.pattern_trainer.name
 
+        eps = 0.05
+
         dists = self.get_distance_matrix()
         dists = dists * (dists < max_dist)
         
@@ -617,9 +694,15 @@ class GraphHandler:
        
         current_ids = indices[pred_id]
         
-        not_zero = current!=0
+        not_zero = current > eps
         current = current[not_zero]
         ids = current_ids[not_zero]
+       
+        if pred_id in ids:
+            print("!! pred_id in ids", pred_id, ids)
+            idx = (ids == pred_id).nonzero(as_tuple=True)[0]
+            ids = torch.cat([ids[:idx], ids[idx+1:]])
+            current = torch.cat([current[:idx], current[idx+1:]])
 
         if include_pred_id:
             ids = torch.cat([torch.tensor([pred_id]), ids])
@@ -655,6 +738,9 @@ class GraphHandler:
                 if len(combo_ids) == 1 and combo_ids[0] == pred_id:
                     print("skipping combination with only pred_id", combo_ids, pred_id)
                     continue
+                if pred_id in combo_ids:
+                    print("ERROR: pred_id in combo_ids", combo_ids, pred_id)
+                    exit()
                 data = self.create_pattern_graph(pred_id, combo_ids, latent_name)
                 data.used_ids = combo_ids.tolist()
                 data_list.append(data)
@@ -716,6 +802,127 @@ class GraphHandler:
         if line_trainer is None:
             line_trainer = self.line_trainer
         return GraphHandler.decompose_node_hidden_state(z, line_trainer)
+    
+
+    def cluster_and_average(self, func1, func2, eps1, eps2, message):
+        lines = self.lines
+        print("CLUSTERING", message, len(lines), "lines")
+        final_lines = []
+        if(len(lines) == 0):
+            return lines
+        clusters_position = func1(lines, eps1)
+        for cluster_label, lines_in_cluster in clusters_position.items():
+            if cluster_label == -1:
+                
+                final_lines.extend(lines_in_cluster)
+            else:
+              
+                if len(lines_in_cluster) > 1:
+                    cluster_latent = func2(lines_in_cluster, eps2)
+                    for cluster_label_latent, lines_in_cluster_latent in cluster_latent.items():
+                        if cluster_label_latent == -1:
+                           
+                            final_lines.extend(lines_in_cluster_latent)
+                        else:
+                            
+                            averaged_latent = GraphHandler.average_latent_vectors(lines_in_cluster_latent, lines_in_cluster_latent[0].position)
+                            line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
+                            line.update_position_from_reference(lines_in_cluster_latent[0].position)
+                            final_lines.append(line)
+                            print(message, "averaged lines", len(lines_in_cluster_latent))
+        print("FINAL LINES", message, len(final_lines))
+
+        return final_lines
+                            
+        # clusters_position, clusters_latent = Line.find_position_clusters(lines)
+        
+        # for cluster_label, lines_in_cluster in clusters_position.items():
+        #     if cluster_label == -1:
+        #         print(f"Noise cluster: {len(lines_in_cluster)} lines")
+        #     else:
+        #         print(f"Cluster {cluster_label}: {len(lines_in_cluster)} lines")
+        #         center_position = lines_in_cluster[0].position
+        #         zs = []
+        #         for line in lines_in_cluster:
+        #             if line not in clusters_latent[cluster_label]:
+        #                 print(f"Line {line.id} not in latent cluster {cluster_label}")
+        #                 continue
+        #             z = line.get_pattern_z(center_position=center_position)
+        #             zs.append(z)
+        #         zs = torch.mean(torch.stack(zs), dim=0)
+        #         print(zs.shape)
+               
+        #         exit()
+        
+        return lines
+    
+    @staticmethod
+    def average_latent_vectors(lines, center_position):
+        zs = []
+        for line in lines:
+            z = line.get_pattern_z(center_position=center_position)
+            zs.append(z)
+        return torch.mean(torch.stack(zs), dim=0)
+
+    @staticmethod
+    def find_position_clusters(lines, eps):
+        positions = np.array([[line.position['x'], line.position['y']] for line in lines])
+        dbscan_position = DBSCAN(eps, min_samples=2)
+        labels_position = dbscan_position.fit_predict(positions)
+        
+        # Group lines by cluster label
+        clusters_position = {}
+        for idx, label in enumerate(labels_position):
+            if label not in clusters_position:
+                clusters_position[label] = []
+            clusters_position[label].append(lines[idx])
+        
+        # Now clusters[label] contains the list of lines in that cluster
+        # Note: label -1 means noise/outliers
+        #print("Clustered lines by position:", {label: len(clusters_position[label]) for label in clusters_position})
+       
+        return clusters_position
+    
+    @staticmethod
+    def find_latent_clusters(lines, eps):
+        latent_vectors = np.array([line.get_latent_vector().detach().numpy() for line in lines])
+        dbscan_latent = DBSCAN(eps, min_samples=2)
+        labels_latent = dbscan_latent.fit_predict(latent_vectors)
+
+        # nur latent vector gerade. sollte da scale und rotation rein?
+        clusters_latent = {}
+        for idx, label in enumerate(labels_latent):
+            if label not in clusters_latent:
+                clusters_latent[label] = []
+            clusters_latent[label].append(lines[idx])
+        
+        # Now clusters[label] contains the list of lines in that cluster
+        # Note: label -1 means noise/outliers
+        #print("Clustered lines by latent:", {label: len(clusters_latent[label]) for label in clusters_latent})
+       
+        return clusters_latent
+
+    # def get_total_tensor(self):
+    #     total_position_points = self._points2Tensor()
+    #     # Scale and rotate points
+    #     points_tensor = self._points2Tensor()
+        
+    #     # Create rotation matrices
+    #     theta = torch.tensor(self.rotation * 360 * torch.pi / 180, dtype=torch.float)
+    #     rot_matrix = torch.tensor([
+    #         [torch.cos(theta), -torch.sin(theta)],
+    #         [torch.sin(theta), torch.cos(theta)]
+    #     ])
+        
+    #     # Apply scale and rotation
+    #     scaled_points = points_tensor * self.scale * config['max_dist']
+    #     rotated_points = torch.matmul(scaled_points, rot_matrix.T)
+        
+    #     # Create position tensor of same shape as rotated_points and add it
+    #     position_tensor = torch.tensor([self.position['x'], self.position['y']]).repeat(rotated_points.shape[0], 1)
+    #     total_position_points = rotated_points + position_tensor
+
+    #     return total_position_points
     
     @staticmethod
     def decompose_node_hidden_state(z, line_trainer):

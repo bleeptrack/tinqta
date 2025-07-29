@@ -882,10 +882,10 @@ class PatternTrainer():
         total_points = rotated_points + position_tensor
         return total_points
     
-    def getDatasetSample(self):
-        self.model.eval()
-        datanum = random.randint(0,self.dataset.len()-1)
-        return self.dataset[datanum].x
+    # def getDatasetSample(self):
+    #     self.model.eval()
+    #     datanum = random.randint(0,self.dataset.len()-1)
+    #     return self.dataset[datanum].x
 
     def generate(self):
         #wir haben hier noch nie probiert mit einem richtigen random z was zu generieren, oder?
