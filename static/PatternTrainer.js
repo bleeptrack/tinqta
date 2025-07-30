@@ -55,10 +55,16 @@ export class PatternTrainer extends HTMLElement {
 			this.canvas.clear()
 			let baseLines = []
 			if(data["base_list"]){
+				
 				for(let line of data["base_list"]){
-					let l = this.canvas.drawLine(line, "black")
+					if(line["is_fixed"]){
+						let l = this.canvas.drawLine(line, "orange")
+						l.strokeWidth = 15
+						l.opacity = 0.5
+						baseLines.push(l)
+					}
 					//l.translate(paper.view.center)
-					baseLines.push(l)
+					
 				}
 			}
 			if(data["ground_truth"]){
@@ -75,7 +81,8 @@ export class PatternTrainer extends HTMLElement {
 			if(data["prediction"]){
 				if(Array.isArray(data["prediction"])){
 					for(let line of data["prediction"]){
-						let l = this.canvas.drawLine(line, "blue")
+						//let l = this.canvas.drawLine(line, "blue")
+						/*
 						if(line["used_ids"] && !line["is_fixed"]){
 							
 							for(let id of line["used_ids"]){
@@ -92,6 +99,7 @@ export class PatternTrainer extends HTMLElement {
 							this.canvas.centerDrawing(c.position)
 							
 						}
+						*/
 						//l.translate(paper.view.center)
 					}
 				}else{
