@@ -260,7 +260,69 @@ def inspect_latent(data):
         pointlist.append(Line._tensor2Points(tensor))
         latent_position_list.append(z.tolist())
 
-    emit('latent', {'pointlist': pointlist, 'latent_position_list': latent_position_list})
+
+    # get the individual min and max value of each latent position direction
+    if latent_position_list:
+        # latent_position_list is a list of lists, e.g. [[x1, y1, z1], [x2, y2, z2], ...]
+        # We want the min and max for each dimension
+        import numpy as np
+        latent_array = np.array(latent_position_list)
+        min_latent = latent_array.min(axis=0)
+        max_latent = latent_array.max(axis=0)
+        print("Min value in each latent direction:", min_latent)
+        print("Max value in each latent direction:", max_latent)
+
+        dist = min(max_latent - min_latent) / 5
+        print("Distance between min and max value in each latent direction:", dist, max_latent - min_latent)
+
+    # Create a grid of points from min_latent to max_latent with spacing 'dist'
+    # The grid will be in the latent space dimensions (usually 2D or 3D)
+    grid_points = []
+    if latent_position_list:
+        # Determine the number of dimensions
+        dims = len(min_latent)
+        # For 2D or 3D latent spaces
+        if dims == 2:
+            x_vals = np.arange(min_latent[0], max_latent[0] + dist, dist)
+            y_vals = np.arange(min_latent[1], max_latent[1] + dist, dist)
+            for x in x_vals:
+                for y in y_vals:
+                    grid_points.append([x, y])
+        elif dims == 3:
+            x_vals = np.arange(min_latent[0], max_latent[0] + dist, dist)
+            y_vals = np.arange(min_latent[1], max_latent[1] + dist, dist)
+            z_vals = np.arange(min_latent[2], max_latent[2] + dist, dist)
+            for x in x_vals:
+                for y in y_vals:
+                    for z in z_vals:
+                        grid_points.append([x, y, z])
+        else:
+            print("ERROR: latent space is not 2D or 3D. Higher dimensions not implemented yet.")
+        #print("Grid points in latent space:", grid_points)
+
+
+    # For all grid_points, get the latent vector z from the lineTrainer and also get the points from the tensor.
+    grid_pointlist = []
+    grid_latent_position_list = []
+    for grid_z in grid_points:
+        # grid_z is a list (e.g. [x, y] or [x, y, z])
+        # Convert to tensor if needed
+        import torch
+        z_tensor = torch.tensor(grid_z, dtype=torch.float32)
+        # If the model expects a batch dimension, unsqueeze(0)
+        # But from context, lineTrainer.decode_latent_vector(z) expects a 1D tensor
+        tensor = lineTrainer.decode_latent_vector(z_tensor)
+        grid_pointlist.append(Line._tensor2Points(tensor))
+        grid_latent_position_list.append(grid_z)
+    # Add to emit
+    emit('latent', {
+        'pointlist': pointlist + grid_pointlist,
+        'latent_position_list': latent_position_list + grid_latent_position_list,
+        'is_original': [True] * len(pointlist) + [False] * len(grid_pointlist)
+        #'grid_pointlist': grid_pointlist,
+        #'grid_latent_position_list': grid_latent_position_list
+    })
+
 
 
 @socketio.on('sample pattern')

@@ -25,8 +25,9 @@ export class LatentInspector extends HTMLElement {
 			console.log("latent", info)
 			console.log("pointlist:", info.pointlist)
 			console.log("latent_position_list:", info.latent_position_list)
+			console.log("is_original:", info.is_original)
             this.render_points(info.pointlist, info.latent_position_list)
-            this.render_lines(info.pointlist, info.latent_position_list)
+            this.render_lines(info.pointlist, info.latent_position_list, info.is_original)
 		})
 		
 		
@@ -82,7 +83,6 @@ export class LatentInspector extends HTMLElement {
     // For each latent position, create a small red sphere
     for (let i = 0; i < latent_position_list.length; i++) {
         const pos = latent_position_list[i];
-        console.log(`Creating sphere ${i} at position:`, pos);
         
         // pos is [x, y, z]
         // Create a sphere mesh
@@ -102,8 +102,8 @@ export class LatentInspector extends HTMLElement {
     console.log("Created", this._latentSpheres.length, "spheres total");
     }
 
-    render_lines(pointlist, latent_position_list) {
-        console.log("render_lines called with:", { pointlist, latent_position_list });
+    render_lines(pointlist, latent_position_list, is_original) {
+        console.log("render_lines called with:", { pointlist, latent_position_list, is_original });
         
         // Remove previous lines if any
         if (!this._latentLines) {
@@ -131,11 +131,7 @@ export class LatentInspector extends HTMLElement {
             const line2D = pointlist[i];
             const latentPos = latent_position_list[i];
             
-            console.log(`=== Line ${i} ===`);
-            console.log("line2D:", line2D);
-            console.log("line2D type:", typeof line2D);
-            console.log("line2D length:", line2D ? line2D.length : "undefined");
-            console.log("latentPos:", latentPos);
+            
             
             // Check if line2D is valid
             if (!line2D || !Array.isArray(line2D)) {
@@ -148,11 +144,11 @@ export class LatentInspector extends HTMLElement {
             
             for (let j = 0; j < line2D.length; j++) {
                 const point2D = line2D[j];
-                console.log(`Point ${j}:`, point2D, "type:", typeof point2D);
+                
                 
                 // Check if point2D is valid - it's an object with x,y properties
                 if (!point2D || typeof point2D !== 'object' || point2D.x === undefined || point2D.y === undefined) {
-                    console.warn(`Point ${j} in line ${i} is not valid:`, point2D);
+                    
                     continue;
                 }
                 
@@ -162,19 +158,27 @@ export class LatentInspector extends HTMLElement {
                 const z = 0; // Keep Z at 0 for flat lines
                 
                 points3D.push(new Vector3(x, y, z));
-                console.log(`Point ${j}: 2D(${point2D.x}, ${point2D.y}) -> 3D(${x}, ${y}, ${z})`);
+                
             }
             
             // Only create line if we have valid points
             if (points3D.length > 0) {
-                console.log(`Creating thick 3D line ${i} with ${points3D.length} points`);
+                
+                
+                // Determine line properties based on is_original
+                // is_original is an array where each element corresponds to each line
+                const isOriginalLine = is_original[i];
+                console.log(`Line ${i}: is_original[${i}] = ${isOriginalLine}`);
+                const radius = isOriginalLine ? 0.02 : 0.01; // Thicker for original lines
+                const color = isOriginalLine ? new Color3(1, 0, 0) : new Color3(1, 1, 0); // Red for original, yellow for others
+                const emissiveColor = isOriginalLine ? new Color3(0.5, 0, 0) : new Color3(0.3, 0.3, 0); // Red glow for original
                 
                 // Create a thick line using tube for better visibility
                 const line = MeshBuilder.CreateTube(
                     "latentLine" + i,
                     { 
                         path: points3D,
-                        radius: 0.01, // Thick line radius
+                        radius: radius, // Thicker for original lines
                         tessellation: 8,
                         cap: 2 // Both caps
                     },
@@ -184,10 +188,10 @@ export class LatentInspector extends HTMLElement {
                 // Position the line at the latent position
                 line.position = new Vector3(latentPos[0], latentPos[1], latentPos[2]);
                 
-                // Set line color to yellow
+                // Set line color based on is_original
                 const lineMaterial = new StandardMaterial("lineMat" + i, scene);
-                lineMaterial.diffuseColor = new Color3(1, 1, 0); // Yellow
-                lineMaterial.emissiveColor = new Color3(0.3, 0.3, 0); // Slight yellow glow
+                lineMaterial.diffuseColor = color; // Red for original, yellow for others
+                lineMaterial.emissiveColor = emissiveColor; // Red glow for original, yellow glow for others
                 line.material = lineMaterial;
                 
                 // Make the tube face the camera (billboard mode Y only)
