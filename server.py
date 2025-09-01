@@ -245,7 +245,22 @@ def send_progress_pattern(name):
 
 
 
+@socketio.on('inspect latent')
+def inspect_latent(data):
+    print("inspect latent", data)
 
+
+    lineTrainer = LineTrainer(data['name'])
+    pointlist = []
+    latent_position_list = []
+    tensors, _ = lineTrainer.extractOriginLineVectors()
+    for z in tensors:
+        print(z)
+        tensor = lineTrainer.decode_latent_vector(z)
+        pointlist.append(Line._tensor2Points(tensor))
+        latent_position_list.append(z.tolist())
+
+    emit('latent', {'pointlist': pointlist, 'latent_position_list': latent_position_list})
 
 
 @socketio.on('sample pattern')
@@ -290,10 +305,10 @@ def generate_pattern(data):
         pt = PatternTrainer(data['name'])
         gh.clear()
         gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
-        #gh.init_original()
+        gh.init_original()
         gh.calculate_original_lines()
 
-        gh.random_fill()
+        #gh.random_fill()
 
         info = {}
         info["base_list"] = [line.to_JSON() for line in gh.lines]
@@ -302,6 +317,14 @@ def generate_pattern(data):
 
     else:
         gh.start_new_line()
+        if len(gh.ghost_lines) > 0:
+            info = {}
+            info["base_list"] = [line.to_JSON() for line in gh.lines]
+            info["prediction"] = [line.to_JSON() for line in gh.gen_step]
+            info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
+            emit('prediction', info)
+            #return
+        
         #for i in range(1000):
         info = {}
         count = 0
@@ -313,7 +336,7 @@ def generate_pattern(data):
             count += 1
             if count % 100 == 0:
                 print("loop count", count)
-            if count > 2000:
+            if count > 400:
                 toast("LOOP LIMIT reached")
                 gh.gen_step = []
                 break
@@ -330,7 +353,7 @@ def generate_pattern(data):
         #gh.handle_ghost_lines()
 
         emit('prediction', info)
-        generate_pattern(data) # 50ms delay
+        #generate_pattern(data) # 50ms delay
 
 def toast(message):
     if message:
@@ -402,6 +425,10 @@ def extend_pattern(data):
 @app.route("/")
 def start():
     return render_template('webcam.html')
+
+@app.route("/latent-inspector")
+def website_latent_inspector():
+    return render_template('latent-inspector.html')
 
 @app.route("/train")
 def website_train():

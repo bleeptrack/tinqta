@@ -228,24 +228,25 @@ class GraphHandler:
         if patternTrainer is None:
             patternTrainer = self.pattern_trainer
 
-        distance = 50
+        distance = config['stroke_normalizing_size'] + config['max_dist']*2
         #for i in range(3):
-        for i in range(1):
-            for j in range(1):
-
+        for i in range(3):
+            for j in range(3):
+                print("i", i, "j", j)
                 data = patternTrainer.dataset.get_random_item()
                 self.test_data = data
                 #pred = self.decompose_node(data.x)
                 #self.lines.append(pred)
-                reference_position = {"x":i*(distance + config['max_dist']*3), "y":j*(distance + config['max_dist']*3)}
+                reference_position = {"x":i*distance, "y":j*distance}
+                print("reference_position", reference_position)
 
                 noisy_data = data.y.clone() + torch.randn(data.y.size()) * noise_level
                 ground_truth = self.decompose_node(noisy_data)
                 ground_truth.update_position_from_reference(reference_position)
                 ground_truth.is_fixed = True
                 self.lines.append(ground_truth)
-                for i in range(data.x.size()[0]):
-                    n = self.decompose_node(data.x[i])
+                for k in range(data.x.size()[0]):
+                    n = self.decompose_node(data.x[k])
                     n.update_position_from_reference(reference_position)
                     n.is_fixed = True
                     self.lines.append(n)
@@ -392,10 +393,16 @@ class GraphHandler:
         if not hasattr(self, "ghost_lines"):
             self.ghost_lines = []
         
+      
+        num_fixed = sum(1 for line in self.lines if getattr(line, 'is_fixed', False))
+        num_not_fixed = len(self.lines) - num_fixed
+        print(f"Number of fixed lines: {num_fixed}, Number of non-fixed lines: {num_not_fixed}")
 
 
         for i in range(len(self.lines)):
             if self.lines[i].is_fixed is False:
+                
+                
 
                 #adapted_z = previous_line_z + self.lines[i].adaption_rate * (z - previous_line_z)
 
@@ -410,10 +417,11 @@ class GraphHandler:
 
                 data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=True)
                 if data is None:
-                    print("line out of reference reach. Setting a new line here")
-                    new_line = self.init_noisy_line_at_position(self.lines[i].position)
-                    self.lines[i] = new_line
+                    #print("line out of reference reach. Setting a new line here")
+                    #new_line = self.init_noisy_line_at_position(self.lines[i].position)
+                    #self.lines[i] = new_line
                     continue
+                
 
                 if not hasattr(self.lines[i], "used_ids"):
                     self.lines[i].used_ids = data[0].used_ids
@@ -427,24 +435,24 @@ class GraphHandler:
                         #print("choosing options", [d.used_ids for d in data_filtered])
                         if self.lines[i].stopped: 
                             if len(data_filtered) > 1:
-                                print("choosing second option", data_filtered[1].used_ids)
+                                #print("choosing second option", data_filtered[1].used_ids)
                                 
                                 self.ghost_lines.append(self.lines[i])
-                                print("creating ghost line. Now:", len(self.ghost_lines))
+                                #print("creating ghost line. Now:", len(self.ghost_lines))
                                 data = data_filtered[1]
                                 
                             else:
                                 print("DONE")
-                                return False
-                                data = data_filtered[0]
+                                self.ghost_lines.append(self.lines[i])
+                                continue
                         else:
                             
                             data = data_filtered[0]
                     else:
 
-                        print("no data found for old ids (went out of reach of the old id set)", self.lines[i].used_ids)
+                        #print("no data found for old ids (went out of reach of the old id set)", self.lines[i].used_ids)
                         data = data[0]
-                        print("using new data", data.used_ids)
+                        #print("using new data", data.used_ids)
                     
                 
                 #flexi_rate = (self.lines[i].adaption_rate/len(self.lines[i].used_ids))
@@ -466,7 +474,7 @@ class GraphHandler:
                
                
                 if self.lines[i].pos_diff(line) < diff_threshold:
-                    print("pos diff reached:", self.lines[i].pos_diff(line))
+                    #print("pos diff reached:", self.lines[i].pos_diff(line))
                     line.stopped = True
                 else:
                     line.stopped = False
@@ -486,16 +494,16 @@ class GraphHandler:
                     count1 = line.history.count(line.history[-1])
                     count2 = line.history.count(line.history[-2])
                     unique_elements = len([list(x) for x in set(tuple(l) for l in line.history)])
-                    print("history", unique_elements, "count of last:", count1, count2, line.last_history)
+                    #print("history", unique_elements, "count of last:", count1, count2, line.last_history)
                     if len(line.last_history) > 0:
                         wiggle_diff = (line.last_history[0]-count2 + line.last_history[1]-count1)
-                        print("wiggle diff", wiggle_diff)
+                        #print("wiggle diff", wiggle_diff)
                         if wiggle_diff < 2:
                             line.wiggle_count += 1
-                            print("WIGGLE DETECTED", line.wiggle_count)
+                            #print("WIGGLE DETECTED", line.wiggle_count)
                             line.adaption_rate *= 0.9
                             if line.wiggle_count > 20:
-                                print("WIGGLE STOP")
+                                #print("WIGGLE STOP")
                                 line.stopped = False
                                 #print("adding wiggle line to ghost lines")
                                 #self.ghost_lines.append(line)
@@ -523,30 +531,89 @@ class GraphHandler:
 
 
         #rejection funktioniert nicht gut rein über den latenten vektor
-        self.reject_abnormal_lines()
+        #self.reject_abnormal_lines()
 
         #for ghost_line in self.ghost_lines:
         #    self.lines.append(ghost_line)
 
-        
-        #elf.lines = self.cluster_and_average(func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=100, message="latent first")
-        #self.lines = self.cluster_and_average(func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=30, eps2=2, message="pos first")
+        #instead of latent first we could do a voronoi cell based clustering and see if the lines are close enough in space to belong together
+        self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=150, message="latent first")
+        print([line.averaged_from for line in self.ghost_lines])
+        self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=80, eps2=2, message="pos first")
+        print([line.averaged_from for line in self.ghost_lines])
+        self.ghost_lines.sort(key=lambda x: x.averaged_from)
+        print([line.averaged_from for line in self.ghost_lines])
 
+        #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
+        self.ghost_lines = self.top_p(self.ghost_lines, 0.5)
+        print([line.averaged_from for line in self.ghost_lines])
         #reject again if an average makes no sense
-        self.reject_abnormal_lines()
+        #self.reject_abnormal_lines()
 
-        for line in self.lines:
-            if line.is_fixed is False:
-                self.ghost_lines.append(line)
-                self.lines.remove(line)
-            #line.is_fixed = True
+        for line in self.ghost_lines:
+            line.is_fixed = True
+            line.averaged_from = 1
+            self.lines.append(line)
+            #muesste ich hier die averaged_from zurücksetzen?
 
-        z = self.line_trainer.randomInitPoint()
-        line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-        line.update_position_from_reference({"x":random.randint(0, 800), "y":random.randint(0, 800)})
-        self.lines.append(line)
-        #self.ghost_lines = []
+        #warum verschwinden hier linien?
+        #ToDo: farbliche markierung für neue und manipulierte linien
+        print("averaging main lines")
+        self.lines = self.cluster_and_average(self.lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=100, message="latent first")
+        print([line.averaged_from for line in self.lines])
+        self.lines = self.cluster_and_average(self.lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=50, eps2=1, message="pos first")
+        print([line.averaged_from for line in self.lines])
         
+        grid = 100
+        random_offset = round(grid/4)
+        for i in range(0,801,grid):
+            for j in range(0,801,grid):
+                z = self.line_trainer.randomInitPoint()
+                line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
+                line.update_position_from_reference({"x":i+random.randint(-random_offset, random_offset), "y":j+random.randint(-random_offset, random_offset)})
+                self.lines.append(line)
+        #self.ghost_lines = []
+
+    def top_p(self, lines, p):
+        """
+        Perform top-p (nucleus) sampling on lines based on their averaged_from values.
+        
+        Args:
+            lines: List of lines to sample from
+            p: Probability threshold (0.0 to 1.0) for nucleus sampling
+            
+        Returns:
+            List of lines that fall within the top-p cumulative probability
+        """
+        if not lines:
+            return lines
+            
+        # Convert averaged_from counts to percentages
+        total_count = sum(line.averaged_from for line in lines)
+        if total_count == 0:
+            return lines
+            
+        # Calculate probabilities for each line
+        line_probs = []
+        for line in lines:
+            prob = line.averaged_from / total_count
+            line_probs.append((line, prob))
+        
+        # Sort by probability in descending order
+        line_probs.sort(key=lambda x: x[1], reverse=True)
+        
+        # Perform nucleus sampling
+        cumulative_prob = 0.0
+        selected_lines = []
+        
+        for line, prob in line_probs:
+            cumulative_prob += prob
+            selected_lines.append(line)
+            
+            if cumulative_prob >= p:
+                break
+                
+        return selected_lines
     
     def get_path_name(self, name, type_name):
         return osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', name +'-'+ type_name +'.pt')
@@ -691,10 +758,11 @@ class GraphHandler:
         sorted_dists, indices = torch.sort(dists)
 
         current = sorted_dists[pred_id]
-       
         current_ids = indices[pred_id]
-        
-        not_zero = current > eps
+
+        # Filter out nodes that have is_fixed == False
+        fixed_mask = torch.tensor([getattr(self.lines[i], "is_fixed", False) for i in current_ids], dtype=torch.bool)
+        not_zero = (current > eps) & fixed_mask
         current = current[not_zero]
         ids = current_ids[not_zero]
        
@@ -804,8 +872,8 @@ class GraphHandler:
         return GraphHandler.decompose_node_hidden_state(z, line_trainer)
     
 
-    def cluster_and_average(self, func1, func2, eps1, eps2, message):
-        lines = self.lines
+    def cluster_and_average(self, lines, func1, func2, eps1, eps2, message):
+      
         print("CLUSTERING", message, len(lines), "lines")
         final_lines = []
         if(len(lines) == 0):
@@ -828,9 +896,17 @@ class GraphHandler:
                             averaged_latent = GraphHandler.average_latent_vectors(lines_in_cluster_latent, lines_in_cluster_latent[0].position)
                             line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
                             line.update_position_from_reference(lines_in_cluster_latent[0].position)
+                            if hasattr(line, "averaged_from"):
+                                line.averaged_from = sum([line.averaged_from for line in lines_in_cluster_latent])
+                            else:
+                                line.averaged_from = len(lines_in_cluster_latent)
                             final_lines.append(line)
                             print(message, "averaged lines", len(lines_in_cluster_latent))
         print("FINAL LINES", message, len(final_lines))
+
+        for line in final_lines:
+            if not hasattr(line, "averaged_from"):
+                line.averaged_from = 1
 
         return final_lines
                             
