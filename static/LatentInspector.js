@@ -2,6 +2,7 @@
 import { Engine } from "./node_modules/@babylonjs/core/Engines/engine.js";
 import { Scene } from "./node_modules/@babylonjs/core/scene.js";
 import { ArcRotateCamera } from "./node_modules/@babylonjs/core/Cameras/arcRotateCamera.js";
+import { AutoRotationBehavior } from "./node_modules/@babylonjs/core/Behaviors/Cameras/autoRotationBehavior.js";
 import { Vector3 } from "./node_modules/@babylonjs/core/Maths/math.js";
 import { Color3 } from "./node_modules/@babylonjs/core/Maths/math.color.js";
 import { Plane } from "./node_modules/@babylonjs/core/Maths/math.plane.js";
@@ -155,11 +156,10 @@ export class LatentInspector extends HTMLElement {
                     continue;
                 }
                 
-                // Project 2D point onto a plane at the latent position
-                // Scale the 2D coordinates and offset by the latent position (much smaller)
-                const x = latentPos[0] + (point2D.x - 0.5) * 0.005; // Much smaller scale
-                const y = latentPos[1] + (point2D.y - 0.5) * 0.005;
-                const z = latentPos[2]; // Keep Z at latent position
+                // Use 2D points directly as 3D points (independent of latent position)
+                const x = point2D.x * 0.01; // Scale the 2D coordinates
+                const y = point2D.y * 0.01;
+                const z = 0; // Keep Z at 0 for flat lines
                 
                 points3D.push(new Vector3(x, y, z));
                 console.log(`Point ${j}: 2D(${point2D.x}, ${point2D.y}) -> 3D(${x}, ${y}, ${z})`);
@@ -174,18 +174,24 @@ export class LatentInspector extends HTMLElement {
                     "latentLine" + i,
                     { 
                         path: points3D,
-                        radius: 0.01, // Much thicker line radius
+                        radius: 0.01, // Thick line radius
                         tessellation: 8,
                         cap: 2 // Both caps
                     },
                     scene
                 );
                 
+                // Position the line at the latent position
+                line.position = new Vector3(latentPos[0], latentPos[1], latentPos[2]);
+                
                 // Set line color to yellow
                 const lineMaterial = new StandardMaterial("lineMat" + i, scene);
                 lineMaterial.diffuseColor = new Color3(1, 1, 0); // Yellow
                 lineMaterial.emissiveColor = new Color3(0.3, 0.3, 0); // Slight yellow glow
                 line.material = lineMaterial;
+                
+                // Make the tube face the camera (billboard mode Y only)
+                line.billboardMode = 2; // BILLBOARDMODE_Y (rotate around Y axis only)
                 
                 this._latentLines.push(line);
             } else {
@@ -222,6 +228,11 @@ export class LatentInspector extends HTMLElement {
         const scene = new Scene(engine);
         const camera = new ArcRotateCamera("camera1", Math.PI / 2, Math.PI / 4, 4, Vector3.Zero(), scene);
         camera.attachControl(canvas, true);
+        
+        // Add auto-rotation behavior
+        const autoRotationBehavior = new AutoRotationBehavior();
+        autoRotationBehavior.idleRotationSpeed = 1;
+        camera.addBehavior(autoRotationBehavior);
         const light = new HemisphericLight("light1", new Vector3(0, 1, 0), scene);
         return scene;
     }
