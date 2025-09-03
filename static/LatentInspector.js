@@ -26,6 +26,10 @@ export class LatentInspector extends HTMLElement {
 			console.log("pointlist:", info.pointlist)
 			console.log("latent_position_list:", info.latent_position_list)
 			console.log("is_original:", info.is_original)
+			
+			// Store original data for filtering
+			this.originalData = info;
+			
             this.render_points(info.pointlist, info.latent_position_list)
             this.render_lines(info.pointlist, info.latent_position_list, info.is_original)
 		})
@@ -44,7 +48,85 @@ export class LatentInspector extends HTMLElement {
 					height: 100%;
 					touch-action: none;
 				}
+				.controls {
+					position: absolute;
+					top: 10px;
+					left: 10px;
+					background: rgba(0, 0, 0, 0.8);
+					padding: 15px;
+					border-radius: 8px;
+					color: white;
+					font-family: Arial, sans-serif;
+					z-index: 1000;
+				}
+				.control-group {
+					margin-bottom: 15px;
+				}
+				.control-group label {
+					display: block;
+					margin-bottom: 5px;
+					font-size: 12px;
+					font-weight: bold;
+				}
+				.slider-container {
+					display: flex;
+					align-items: center;
+					gap: 10px;
+				}
+				.slider-container input[type="range"] {
+					flex: 1;
+					margin: 0 5px;
+				}
+				.slider-container span {
+					font-size: 11px;
+					min-width: 30px;
+					text-align: center;
+				}
+				.toggle-container {
+					display: flex;
+					align-items: center;
+					gap: 10px;
+				}
+				.toggle-container input[type="checkbox"] {
+					margin: 0;
+				}
 			</style>
+			
+			<div class="controls">
+				<div class="control-group">
+					<label>X Range</label>
+					<div class="slider-container">
+						<span id="xMinValue">-6</span>
+						<input type="range" id="xMin" min="-6" max="6" step="0.1" value="-6">
+						<input type="range" id="xMax" min="-6" max="6" step="0.1" value="6">
+						<span id="xMaxValue">6</span>
+					</div>
+				</div>
+				<div class="control-group">
+					<label>Y Range</label>
+					<div class="slider-container">
+						<span id="yMinValue">-6</span>
+						<input type="range" id="yMin" min="-6" max="6" step="0.1" value="-6">
+						<input type="range" id="yMax" min="-6" max="6" step="0.1" value="6">
+						<span id="yMaxValue">6</span>
+					</div>
+				</div>
+				<div class="control-group">
+					<label>Z Range</label>
+					<div class="slider-container">
+						<span id="zMinValue">-6</span>
+						<input type="range" id="zMin" min="-6" max="6" step="0.1" value="-6">
+						<input type="range" id="zMax" min="-6" max="6" step="0.1" value="6">
+						<span id="zMaxValue">6</span>
+					</div>
+				</div>
+				<div class="control-group">
+					<div class="toggle-container">
+						<input type="checkbox" id="showYellowLines" checked>
+						<label for="showYellowLines">Show Yellow Lines</label>
+					</div>
+				</div>
+			</div>
 			
 			<canvas id="renderCanvas" touch-action="none"></canvas>
 		`;
@@ -52,8 +134,18 @@ export class LatentInspector extends HTMLElement {
 	
 		this.shadow.appendChild(container.content.cloneNode(true));
 
+		// Initialize filter ranges
+		this.filterRanges = {
+			xMin: -6, xMax: 6,
+			yMin: -6, yMax: 6,
+			zMin: -6, zMax: 6
+		};
+
+		// Store original data for filtering
+		this.originalData = null;
 		
-		
+		// Toggle state for yellow lines
+		this.showYellowLines = true;
 	}
 
     render_points(pointlist, latent_position_list) {
@@ -131,6 +223,11 @@ export class LatentInspector extends HTMLElement {
             const line2D = pointlist[i];
             const latentPos = latent_position_list[i];
             
+            // Check if this line should be visible based on filter ranges
+            if (!this.isPositionInRange(latentPos)) {
+                continue; // Skip this line if it's outside the filter range
+            }
+            
             
             
             // Check if line2D is valid
@@ -153,8 +250,8 @@ export class LatentInspector extends HTMLElement {
                 }
                 
                 // Use 2D points directly as 3D points (independent of latent position)
-                const x = point2D.x * 0.01; // Scale the 2D coordinates
-                const y = point2D.y * 0.01;
+                const x = point2D.x * 0.005; // Scale the 2D coordinates
+                const y = point2D.y * 0.005;
                 const z = 0; // Keep Z at 0 for flat lines
                 
                 points3D.push(new Vector3(x, y, z));
@@ -169,6 +266,12 @@ export class LatentInspector extends HTMLElement {
                 // is_original is an array where each element corresponds to each line
                 const isOriginalLine = is_original[i];
                 console.log(`Line ${i}: is_original[${i}] = ${isOriginalLine}`);
+                
+                // Skip yellow lines if toggle is off
+                if (!isOriginalLine && !this.showYellowLines) {
+                    continue;
+                }
+                
                 const radius = isOriginalLine ? 0.02 : 0.01; // Thicker for original lines
                 const color = isOriginalLine ? new Color3(1, 0, 0) : new Color3(1, 1, 0); // Red for original, yellow for others
                 const emissiveColor = isOriginalLine ? new Color3(0.5, 0, 0) : new Color3(0.3, 0.3, 0); // Red glow for original
@@ -195,7 +298,7 @@ export class LatentInspector extends HTMLElement {
                 line.material = lineMaterial;
                 
                 // Make the tube face the camera (billboard mode Y only)
-                line.billboardMode = 2; // BILLBOARDMODE_Y (rotate around Y axis only)
+                line.billboardMode = 7; // BILLBOARDMODE_Y (rotate around Y axis only)
                 
                 this._latentLines.push(line);
             } else {
@@ -204,6 +307,58 @@ export class LatentInspector extends HTMLElement {
         }
         
         console.log("Created", this._latentLines.length, "3D lines total");
+    }
+
+    isPositionInRange(position) {
+        const [x, y, z] = position;
+        return x >= this.filterRanges.xMin && x <= this.filterRanges.xMax &&
+               y >= this.filterRanges.yMin && y <= this.filterRanges.yMax &&
+               z >= this.filterRanges.zMin && z <= this.filterRanges.zMax;
+    }
+
+    updateFilterRanges() {
+        if (!this.originalData) return;
+        
+        // Re-render with filtered data
+        this.render_points(this.originalData.pointlist, this.originalData.latent_position_list);
+        this.render_lines(this.originalData.pointlist, this.originalData.latent_position_list, this.originalData.is_original);
+    }
+
+    setupSliderControls() {
+        const sliders = ['xMin', 'xMax', 'yMin', 'yMax', 'zMin', 'zMax'];
+        
+        sliders.forEach(sliderId => {
+            const slider = this.shadow.getElementById(sliderId);
+            const valueSpan = this.shadow.getElementById(sliderId + 'Value');
+            
+            if (slider && valueSpan) {
+                // Update display value
+                valueSpan.textContent = slider.value;
+                
+                // Add event listener
+                slider.addEventListener('input', (e) => {
+                    valueSpan.textContent = e.target.value;
+                    
+                    // Update filter ranges
+                    const axis = sliderId.charAt(0);
+                    const type = sliderId.substring(1);
+                    this.filterRanges[sliderId] = parseFloat(e.target.value);
+                    
+                    // Re-render with new filter
+                    this.updateFilterRanges();
+                });
+            }
+        });
+        
+        // Setup toggle control for yellow lines
+        const yellowLinesToggle = this.shadow.getElementById('showYellowLines');
+        if (yellowLinesToggle) {
+            yellowLinesToggle.addEventListener('change', (e) => {
+                this.showYellowLines = e.target.checked;
+                // Re-render with new toggle state
+                this.updateFilterRanges();
+            });
+        }
     }
 
 
@@ -226,6 +381,9 @@ export class LatentInspector extends HTMLElement {
 		window.addEventListener("resize", function () {
 			engine.resize();
 		});
+
+		// Setup slider controls
+		this.setupSliderControls();
 	}
 
     createScene(engine, canvas) {

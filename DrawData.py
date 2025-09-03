@@ -531,7 +531,7 @@ class GraphHandler:
 
 
         #rejection funktioniert nicht gut rein über den latenten vektor
-        #self.reject_abnormal_lines()
+        self.reject_abnormal_lines()
 
         #for ghost_line in self.ghost_lines:
         #    self.lines.append(ghost_line)
@@ -545,10 +545,11 @@ class GraphHandler:
         print([line.averaged_from for line in self.ghost_lines])
 
         #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
-        self.ghost_lines = self.top_p(self.ghost_lines, 0.5)
+        self.ghost_lines = self.top_p(self.ghost_lines, 0.9)
         print([line.averaged_from for line in self.ghost_lines])
         #reject again if an average makes no sense
         #self.reject_abnormal_lines()
+        print("LINES BEFORE Merging", len(self.lines))
 
         for line in self.ghost_lines:
             line.is_fixed = True
@@ -563,6 +564,8 @@ class GraphHandler:
         print([line.averaged_from for line in self.lines])
         self.lines = self.cluster_and_average(self.lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=50, eps2=1, message="pos first")
         print([line.averaged_from for line in self.lines])
+
+        print("LINES AFTER Merging", len(self.lines))
         
         grid = 100
         random_offset = round(grid/4)
