@@ -363,7 +363,7 @@ class GraphHandler:
         return closest_line, closest_diff
         
     def reject_abnormal_lines(self):
-        threshhold = 0.8
+        threshhold = 2
         accepted_lines = []
         nr_lines = len(self.ghost_lines)
 
@@ -545,25 +545,25 @@ class GraphHandler:
         print([line.averaged_from for line in self.ghost_lines])
 
         #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
-        self.ghost_lines = self.top_p(self.ghost_lines, 0.9)
+        self.ghost_lines = self.top_p(self.ghost_lines, 0.5)
         print([line.averaged_from for line in self.ghost_lines])
         #reject again if an average makes no sense
         #self.reject_abnormal_lines()
         print("LINES BEFORE Merging", len(self.lines))
 
-        for line in self.ghost_lines:
-            line.is_fixed = True
-            line.averaged_from = 1
-            self.lines.append(line)
+        
             #muesste ich hier die averaged_from zurücksetzen?
 
         #warum verschwinden hier linien?
         #ToDo: farbliche markierung für neue und manipulierte linien
-        print("averaging main lines")
-        self.lines = self.cluster_and_average(self.lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=100, message="latent first")
-        print([line.averaged_from for line in self.lines])
-        self.lines = self.cluster_and_average(self.lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=50, eps2=1, message="pos first")
-        print([line.averaged_from for line in self.lines])
+        #print("averaging main lines")
+        #self.lines = self.cluster_and_average(self.lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=100, message="latent first")
+        #print([line.averaged_from for line in self.lines])
+        #self.lines = self.cluster_and_average(self.lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=50, eps2=1, message="pos first")
+        #print([line.averaged_from for line in self.lines])
+
+        if len(self.ghost_lines) > 0:
+            self.lines = self.match_to_fixed_lines(self.lines, self.ghost_lines)
 
         print("LINES AFTER Merging", len(self.lines))
         
@@ -873,6 +873,55 @@ class GraphHandler:
         if line_trainer is None:
             line_trainer = self.line_trainer
         return GraphHandler.decompose_node_hidden_state(z, line_trainer)
+
+    def match_to_fixed_lines(self, lines, ghost_lines, pos_eps=30, latent_eps=1):
+
+        line_buckets = {}
+        not_matched = []
+        
+        for ghost_line in ghost_lines:
+            belongs = False
+            for idx, line in enumerate(lines):
+                #das ist gerade der erst best passende statt der näheste
+                if line.pos_diff(ghost_line) < pos_eps and line.latent_line_diff(ghost_line) < latent_eps:
+                    if idx not in line_buckets:
+                        line_buckets[idx] = []
+                    line_buckets[idx].append(ghost_line)
+                    belongs = True
+                    break
+
+            if not belongs:    
+                ghost_line.is_fixed = True
+                ghost_line.averaged_from = 1
+                not_matched.append(ghost_line)
+
+        untouched_lines = [line for idx, line in enumerate(lines) if idx not in line_buckets]
+        print("untouched_lines", untouched_lines)
+
+        # Pretty print the line_buckets and not_matched for inspection
+        print("line_buckets content:")
+        merged_lines = []
+        for line_idx, ghosts in line_buckets.items():
+            line = lines[line_idx]
+            print(f"  Line id={id(line)}: {len(ghosts)} ghost(s)")
+            averaged_latent = GraphHandler.average_latent_vectors([line, *ghosts], line.position)
+            avg_line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
+            avg_line.update_position_from_reference(line.position)
+            avg_line.fixed = True
+            merged_lines.append(avg_line)
+            
+
+
+        print("not_matched content:")
+        print(f"  {len(not_matched)} ghost line(s) not matched")
+
+
+        final_lines = untouched_lines + not_matched + merged_lines
+        print("LINES AFTER MATCHING", len(final_lines))
+        return final_lines
+     
+
+                    
     
 
     def cluster_and_average(self, lines, func1, func2, eps1, eps2, message):
