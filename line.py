@@ -1,6 +1,7 @@
 from config import config
 import torch
 import math
+import copy
 
 
 class Line():
@@ -143,7 +144,30 @@ class Line():
             line["is_fixed"] = self.is_fixed
         return line
     
-    
+    def clone(self):
+        # Create a new Line object with copied attributes
+        # Use deep copy for points to avoid modifying the original
+        points_copy = copy.deepcopy(self.points)
+        cloned = Line(points_copy, self.scale, self.rotation, self.position, self.position_type)
+        
+        # Deep copy the latent_vectors dictionary and clone any tensors
+        cloned.latent_vectors = {}
+        for name, tensor in self.latent_vectors.items():
+            if isinstance(tensor, torch.Tensor):
+                cloned.latent_vectors[name] = tensor.clone()
+            else:
+                cloned.latent_vectors[name] = copy.deepcopy(tensor)
+        
+        # Copy other attributes
+        cloned.is_fixed = self.is_fixed
+        cloned.dropout = self.dropout
+        cloned.adaption_rate = self.adaption_rate
+        
+        # Copy any additional attributes that might exist
+        if hasattr(self, 'used_ids'):
+            cloned.used_ids = copy.deepcopy(self.used_ids)
+            
+        return cloned
     
     def get_absoulte_maxX(self):
         return max([point['x'] for point in self.points]) + self.position['x']

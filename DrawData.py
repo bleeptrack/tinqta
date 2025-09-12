@@ -383,9 +383,38 @@ class GraphHandler:
             return None
         
 
-   
 
-    def calculate_gen_step(self):
+    def diffuse(self, line_idx):
+        
+      
+        saved_copies = [line.clone() for line in self.lines]
+        self.lines[line_idx].is_fixed = False
+        self.lines[line_idx].stopped = False
+      
+
+        count = 0
+        while self.calculate_gen_step(use_combinations=False):
+            count += 1
+            if count > 500:
+                print("LOOP LIMIT reached")
+                break
+            self.apply_gen_step()
+        
+        if len(self.ghost_lines) > 0:
+            predicted_line = self.ghost_lines[-1]
+        else:
+            predicted_line = self.gen_step[line_idx]
+        self.lines = saved_copies
+        return predicted_line
+
+        predicted_line = self.ghost_lines[-1]
+        if predicted_line is None:
+            predicted_line = self.gen_step[line_idx]
+        self.lines = saved_copies
+        return predicted_line
+
+
+    def calculate_gen_step(self, use_combinations=True):
         
         self.gen_step = []
         diff_threshold = 0.01
@@ -395,8 +424,9 @@ class GraphHandler:
         
       
         num_fixed = sum(1 for line in self.lines if getattr(line, 'is_fixed', False))
+        idx_fixed = [i for i in range(len(self.lines)) if not self.lines[i].is_fixed]
         num_not_fixed = len(self.lines) - num_fixed
-        print(f"Number of fixed lines: {num_fixed}, Number of non-fixed lines: {num_not_fixed}")
+        #print(f"Number of fixed lines: {num_fixed}, Number of non-fixed lines: {num_not_fixed}", idx_fixed)
 
 
         for i in range(len(self.lines)):
@@ -415,12 +445,15 @@ class GraphHandler:
                 
                 
 
-                data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=True)
+                data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=use_combinations)
+                
                 if data is None:
-                    #print("line out of reference reach. Setting a new line here")
+                    print("line out of reference reach")
                     #new_line = self.init_noisy_line_at_position(self.lines[i].position)
                     #self.lines[i] = new_line
                     continue
+                if data is not type(list):
+                    data = [data]
                 
 
                 if not hasattr(self.lines[i], "used_ids"):
@@ -432,7 +465,7 @@ class GraphHandler:
                     
                     data_filtered = [d for d in data if all(used_id in d.used_ids for used_id in self.lines[i].used_ids)]
                     if len(data_filtered) > 0:
-                        #print("choosing options", [d.used_ids for d in data_filtered])
+                        #print("choosing options", [d.used_ids for d in data_filtered], i)
                         if self.lines[i].stopped: 
                             if len(data_filtered) > 1:
                                 #print("choosing second option", data_filtered[1].used_ids)
@@ -472,7 +505,7 @@ class GraphHandler:
                 line.used_ids = data.used_ids
                 line.adaption_rate = flexi_rate
                
-               
+                print("pos diff", self.lines[i].pos_diff(line))
                 if self.lines[i].pos_diff(line) < diff_threshold:
                     #print("pos diff reached:", self.lines[i].pos_diff(line))
                     line.stopped = True
@@ -526,6 +559,18 @@ class GraphHandler:
     
     def apply_gen_step(self):
         self.lines = [line for line in self.gen_step]
+
+    def self_arrange(self):
+        step_lines = []
+        for i in range(len(self.lines)):
+            print("DIFFUSING LINE", i)
+            diff_line = self.diffuse(i)
+            step_lines.append(diff_line)
+
+
+        for line in step_lines:
+            line.is_fixed = True
+        self.lines = step_lines
         
     def start_new_line(self):
 
@@ -779,9 +824,6 @@ class GraphHandler:
             ids = torch.cat([torch.tensor([pred_id]), ids])
             pred_id = None
 
-        if len(ids) == 0:
-            return None
-        
         if node_dropout > 0 and len(ids) > 1:
             #drop node_dropout% of the nodes
             keepers = []
@@ -794,6 +836,9 @@ class GraphHandler:
 
             print("dropping nodes.", len(keepers), "left from", len(ids))
             ids = keepers
+
+        if len(ids) == 0:
+            return None
             
         
         if with_combinations:
@@ -819,8 +864,9 @@ class GraphHandler:
             return data_list
 
         else:    
-
-            return self.create_pattern_graph(pred_id, ids, latent_name)
+            data = self.create_pattern_graph(pred_id, ids, latent_name)
+            data.used_ids = ids.tolist()
+            return data
     
     
     def save_pattern_training_data(self, latent_name=None, name=None):

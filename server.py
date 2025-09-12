@@ -378,7 +378,8 @@ def generate_pattern(data):
         emit('prediction', info)
 
     else:
-        gh.start_new_line()
+        #gh.start_new_line()
+        gh.self_arrange()
         if len(gh.ghost_lines) > 0:
             info = {}
             info["base_list"] = [line.to_JSON() for line in gh.lines]
@@ -387,8 +388,11 @@ def generate_pattern(data):
             emit('prediction', info)
             #return
         
-        #for i in range(1000):
+       
         info = {}
+        info["base_list"] = [line.to_JSON() for line in gh.lines]
+        info["prediction"] = [line.to_JSON() for line in gh.gen_step]
+        info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
         count = 0
         while gh.calculate_gen_step():
             info = {}
@@ -406,16 +410,14 @@ def generate_pattern(data):
             emit('prediction', info)
                 
 
-            #gh.lines = []
+            
             gh.apply_gen_step()
             socketio.sleep(0.01) 
 
-        #toast(gh.remove_duplicate_lines())
-        
-        #gh.handle_ghost_lines()
+      
 
         emit('prediction', info)
-        #generate_pattern(data) # 50ms delay
+      
 
 def toast(message):
     if message:
