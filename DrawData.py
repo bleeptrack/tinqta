@@ -363,19 +363,18 @@ class GraphHandler:
         return closest_line, closest_diff
         
     def reject_abnormal_lines(self):
-        threshhold = 2
+        threshhold = 1
         accepted_lines = []
-        nr_lines = len(self.ghost_lines)
+        nr_lines = len(self.lines)
 
-        print("rejecting abnormal lines. Current lines:", len(self.ghost_lines))
-        for line in self.ghost_lines:
+        print("rejecting abnormal lines. Current lines:", len(self.lines))
+        for line in self.lines:
             closest_original_line, closest_diff = self.get_closest_original_line(line)
-            print("DIFF", closest_diff)
             if closest_diff < threshhold:
                 accepted_lines.append(line)
                     
 
-        self.ghost_lines = accepted_lines
+        self.lines = accepted_lines
         if len(accepted_lines) < nr_lines:
             print("not all lines were accepted. Rejecting", nr_lines-len(accepted_lines), "lines")
             return "not all lines were accepted. Rejecting " + str(nr_lines-len(accepted_lines)) + " lines"
@@ -393,31 +392,29 @@ class GraphHandler:
       
 
         count = 0
-        while self.calculate_gen_step(use_combinations=False):
+        while self.calculate_gen_step(use_combinations=False, adaption_rate=0.01):
             count += 1
-            if count > 500:
-                print("LOOP LIMIT reached")
+            if count > 1:
+                #print("LOOP LIMIT reached")
                 break
-            self.apply_gen_step()
+            #self.apply_gen_step()
         
-        if len(self.ghost_lines) > 0:
-            predicted_line = self.ghost_lines[-1]
-        else:
-            predicted_line = self.gen_step[line_idx]
+       
+        predicted_line = self.gen_step[line_idx]
+        predicted_line.stopped = True
+        predicted_line.is_fixed = True
         self.lines = saved_copies
-        return predicted_line
 
-        predicted_line = self.ghost_lines[-1]
-        if predicted_line is None:
-            predicted_line = self.gen_step[line_idx]
-        self.lines = saved_copies
+
+        #print("MOVED:", predicted_line.position['x'] - self.lines[line_idx].position['x'], predicted_line.position['y'] - self.lines[line_idx].position['y'])
         return predicted_line
 
 
-    def calculate_gen_step(self, use_combinations=True):
+    def calculate_gen_step(self, use_combinations=True, adaption_rate=1):
         
         self.gen_step = []
-        diff_threshold = 0.01
+        diff_threshold = 0.01 / adaption_rate
+
 
         if not hasattr(self, "ghost_lines"):
             self.ghost_lines = []
@@ -426,12 +423,11 @@ class GraphHandler:
         num_fixed = sum(1 for line in self.lines if getattr(line, 'is_fixed', False))
         idx_fixed = [i for i in range(len(self.lines)) if not self.lines[i].is_fixed]
         num_not_fixed = len(self.lines) - num_fixed
-        #print(f"Number of fixed lines: {num_fixed}, Number of non-fixed lines: {num_not_fixed}", idx_fixed)
 
 
         for i in range(len(self.lines)):
+            
             if self.lines[i].is_fixed is False:
-                
                 
 
                 #adapted_z = previous_line_z + self.lines[i].adaption_rate * (z - previous_line_z)
@@ -440,6 +436,8 @@ class GraphHandler:
                 
                 
                 self.lines[i].dropout = 0
+                if adaption_rate is not None:
+                    self.lines[i].adaption_rate = adaption_rate
 
                 
                 
@@ -452,8 +450,9 @@ class GraphHandler:
                     #new_line = self.init_noisy_line_at_position(self.lines[i].position)
                     #self.lines[i] = new_line
                     continue
-                if data is not type(list):
+                if not isinstance(data, list):
                     data = [data]
+
                 
 
                 if not hasattr(self.lines[i], "used_ids"):
@@ -470,13 +469,13 @@ class GraphHandler:
                             if len(data_filtered) > 1:
                                 #print("choosing second option", data_filtered[1].used_ids)
                                 
-                                self.ghost_lines.append(self.lines[i])
+                                self.ghost_lines.append(self.lines[i].clone())
                                 #print("creating ghost line. Now:", len(self.ghost_lines))
                                 data = data_filtered[1]
                                 
                             else:
-                                print("DONE")
-                                self.ghost_lines.append(self.lines[i])
+                                print(f"DONE:{num_fixed} fixed, {num_not_fixed} not fixed")
+                                self.ghost_lines.append(self.lines[i].clone())
                                 continue
                         else:
                             
@@ -505,7 +504,7 @@ class GraphHandler:
                 line.used_ids = data.used_ids
                 line.adaption_rate = flexi_rate
                
-                print("pos diff", self.lines[i].pos_diff(line))
+                
                 if self.lines[i].pos_diff(line) < diff_threshold:
                     #print("pos diff reached:", self.lines[i].pos_diff(line))
                     line.stopped = True
@@ -547,7 +546,7 @@ class GraphHandler:
 
                 self.gen_step.append(line)
             else:
-                self.gen_step.append(self.lines[i])
+                self.gen_step.append(self.lines[i].clone())
 
        
         if all(line.is_fixed for line in self.lines):
@@ -559,32 +558,50 @@ class GraphHandler:
     
     def apply_gen_step(self):
         self.lines = [line for line in self.gen_step]
+        #print("count fixed", sum(1 for line in self.lines if line.is_fixed))
+        #print("count stopped", sum(1 for line in self.lines if line.stopped))
+        
 
     def self_arrange(self):
+
+        for line in self.lines:
+            line.stopped = True
+            line.is_fixed = True
+
+
         step_lines = []
-        for i in range(len(self.lines)):
-            print("DIFFUSING LINE", i)
+        # INSERT_YOUR_CODE
+        import random
+        all_indices = list(range(len(self.lines)))
+        num_to_select = max(1, int(len(all_indices) * 0.1))
+        
+        selected_indices = random.sample(all_indices, num_to_select)
+        # INSERT_YOUR_CODE
+        not_selected_lines = [self.lines[i] for i in all_indices if i not in selected_indices]
+        for i in selected_indices:
+            
             diff_line = self.diffuse(i)
             step_lines.append(diff_line)
 
 
         for line in step_lines:
             line.is_fixed = True
-        self.lines = step_lines
-        
-    def start_new_line(self):
+        self.lines = step_lines + not_selected_lines
 
 
-        #rejection funktioniert nicht gut rein über den latenten vektor
-        self.reject_abnormal_lines()
-
-        #for ghost_line in self.ghost_lines:
-        #    self.lines.append(ghost_line)
-
+        #print("averaging main lines")
+        self.ghost_lines = []
+        self.gen_step = []
+        #self.lines = self.cluster_and_average(self.lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=20, message="latent first")
+        #print([line.averaged_from for line in self.lines])
+        #self.lines = self.cluster_and_average(self.lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=20, eps2=0.2, message="pos first")
+        #print([line.averaged_from for line in self.lines])
+    
+    def choose_ghost_lines(self):
         #instead of latent first we could do a voronoi cell based clustering and see if the lines are close enough in space to belong together
-        self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=150, message="latent first")
-        print([line.averaged_from for line in self.ghost_lines])
-        self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=80, eps2=2, message="pos first")
+        #self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=150, message="latent first")
+        #print([line.averaged_from for line in self.ghost_lines])
+        self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=70, eps2=1, message="pos first")
         print([line.averaged_from for line in self.ghost_lines])
         self.ghost_lines.sort(key=lambda x: x.averaged_from)
         print([line.averaged_from for line in self.ghost_lines])
@@ -592,28 +609,15 @@ class GraphHandler:
         #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
         self.ghost_lines = self.top_p(self.ghost_lines, 0.5)
         print([line.averaged_from for line in self.ghost_lines])
-        #reject again if an average makes no sense
-        #self.reject_abnormal_lines()
-        print("LINES BEFORE Merging", len(self.lines))
 
-        
-            #muesste ich hier die averaged_from zurücksetzen?
-
-        #warum verschwinden hier linien?
-        #ToDo: farbliche markierung für neue und manipulierte linien
-        #print("averaging main lines")
-        #self.lines = self.cluster_and_average(self.lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=100, message="latent first")
-        #print([line.averaged_from for line in self.lines])
-        #self.lines = self.cluster_and_average(self.lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=50, eps2=1, message="pos first")
-        #print([line.averaged_from for line in self.lines])
-
+    def combine_ghost_and_main_lines(self):
         if len(self.ghost_lines) > 0:
-            self.lines = self.match_to_fixed_lines(self.lines, self.ghost_lines)
-
-        print("LINES AFTER Merging", len(self.lines))
+            return self.match_to_fixed_lines(self.lines, self.ghost_lines)
+        
+    def start_new_line(self):
         
         grid = 100
-        random_offset = round(grid/4)
+        random_offset = round(grid/2)
         for i in range(0,801,grid):
             for j in range(0,801,grid):
                 z = self.line_trainer.randomInitPoint()
@@ -920,7 +924,7 @@ class GraphHandler:
             line_trainer = self.line_trainer
         return GraphHandler.decompose_node_hidden_state(z, line_trainer)
 
-    def match_to_fixed_lines(self, lines, ghost_lines, pos_eps=30, latent_eps=1):
+    def match_to_fixed_lines(self, lines, ghost_lines, pos_eps=30, latent_eps=1.5):
 
         line_buckets = {}
         not_matched = []
@@ -962,9 +966,7 @@ class GraphHandler:
         print(f"  {len(not_matched)} ghost line(s) not matched")
 
 
-        final_lines = untouched_lines + not_matched + merged_lines
-        print("LINES AFTER MATCHING", len(final_lines))
-        return final_lines
+        return untouched_lines, not_matched, merged_lines
      
 
                     
@@ -977,31 +979,27 @@ class GraphHandler:
         if(len(lines) == 0):
             return lines
         clusters_position = func1(lines, eps1)
-        for cluster_label, lines_in_cluster in clusters_position.items():
-            if cluster_label == -1:
-                
-                final_lines.extend(lines_in_cluster)
-            else:
-              
-                if len(lines_in_cluster) > 1:
-                    cluster_latent = func2(lines_in_cluster, eps2)
-                    for cluster_label_latent, lines_in_cluster_latent in cluster_latent.items():
-                        if cluster_label_latent == -1:
-                           
-                            final_lines.extend(lines_in_cluster_latent)
-                        else:
-                            
-                            averaged_latent = GraphHandler.average_latent_vectors(lines_in_cluster_latent, lines_in_cluster_latent[0].position)
-                            line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
-                            line.update_position_from_reference(lines_in_cluster_latent[0].position)
-                            if hasattr(line, "averaged_from"):
-                                line.averaged_from = sum([line.averaged_from for line in lines_in_cluster_latent])
-                            else:
-                                line.averaged_from = len(lines_in_cluster_latent)
-                            final_lines.append(line)
-                            print(message, "averaged lines", len(lines_in_cluster_latent))
-        print("FINAL LINES", message, len(final_lines))
+        
 
+        for label, cluster_lines in clusters_position.items():
+            if label == -1 or len(cluster_lines) == 1:
+                final_lines.extend(cluster_lines)
+            else:
+                #final_lines.extend(cluster_lines)
+                clusters_latent = func2(cluster_lines, eps2)
+                for label, latent_lines in clusters_latent.items():
+                    if label == -1 or len(latent_lines) == 1:
+                        final_lines.extend(latent_lines)
+                    else:
+                        averaged_latent = GraphHandler.average_latent_vectors(latent_lines, latent_lines[0].position)
+                        line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
+                        line.update_position_from_reference(latent_lines[0].position)
+                        if any(line.is_fixed for line in latent_lines):
+                            line.is_fixed = True
+                        line.averaged_from = len(latent_lines)
+                        final_lines.append(line)
+        
+      
         for line in final_lines:
             if not hasattr(line, "averaged_from"):
                 line.averaged_from = 1

@@ -13,6 +13,7 @@ class Line():
         self.position_type = position_type
         self.latent_vectors = {}
         self.is_fixed = False
+        #self.stopped = False
         self.dropout = 1
         self.adaption_rate = 1
 

@@ -378,31 +378,23 @@ def generate_pattern(data):
         emit('prediction', info)
 
     else:
-        #gh.start_new_line()
-        gh.self_arrange()
-        if len(gh.ghost_lines) > 0:
-            info = {}
-            info["base_list"] = [line.to_JSON() for line in gh.lines]
-            info["prediction"] = [line.to_JSON() for line in gh.gen_step]
-            info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
-            emit('prediction', info)
-            #return
+        info = {}
+        info["initial"] = [line.to_JSON() for line in gh.lines]
+        
+
+        gh.reject_abnormal_lines()
+        gh.start_new_line()
+        
         
        
-        info = {}
-        info["base_list"] = [line.to_JSON() for line in gh.lines]
-        info["prediction"] = [line.to_JSON() for line in gh.gen_step]
-        info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
+        
         count = 0
         while gh.calculate_gen_step():
-            info = {}
-            info["base_list"] = [line.to_JSON() for line in gh.lines]
-            info["prediction"] = [line.to_JSON() for line in gh.gen_step]
             info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
             count += 1
             if count % 100 == 0:
                 print("loop count", count)
-            if count > 400:
+            if count > 200:
                 toast("LOOP LIMIT reached")
                 gh.gen_step = []
                 break
@@ -414,10 +406,36 @@ def generate_pattern(data):
             gh.apply_gen_step()
             socketio.sleep(0.01) 
 
-      
-
+        gh.choose_ghost_lines()
+        info["top_p"] = [line.to_JSON() for line in gh.ghost_lines]
+        print("SERVER: after top_p", len(gh.ghost_lines), len(info["top_p"]))
         emit('prediction', info)
-      
+        untouched_lines, not_matched, merged_lines = gh.combine_ghost_and_main_lines()
+        gh.lines = not_matched + untouched_lines  + merged_lines
+        gh.reject_abnormal_lines()
+        info["untouched_lines"] = [line.to_JSON() for line in untouched_lines]
+        info["not_matched"] = [line.to_JSON() for line in not_matched]
+        info["merged_lines"] = [line.to_JSON() for line in merged_lines]
+        emit('prediction', info)
+
+        for line in gh.lines:
+            line.stopped = True
+            line.is_fixed = True
+
+        info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
+        emit('prediction', info)
+        
+
+        # for i in range(300):
+        #     print("DIFFUSING ROUND", i)
+            
+        #     gh.self_arrange()
+        #     info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
+        #     emit('prediction', info)
+            
+
+            
+
 
 def toast(message):
     if message:
