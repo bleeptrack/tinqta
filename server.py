@@ -369,6 +369,7 @@ def generate_pattern(data):
         gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
         gh.init_original()
         gh.calculate_original_lines()
+        gh.calculate_line_thresholds()
 
         #gh.random_fill()
 
@@ -390,6 +391,7 @@ def generate_pattern(data):
         
         count = 0
         while gh.calculate_gen_step():
+            #info["initial"] = [line.to_JSON() for line in gh.lines]
             info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
             count += 1
             if count % 100 == 0:
@@ -411,6 +413,15 @@ def generate_pattern(data):
         print("SERVER: after top_p", len(gh.ghost_lines), len(info["top_p"]))
         emit('prediction', info)
         untouched_lines, not_matched, merged_lines = gh.combine_ghost_and_main_lines()
+
+        not_matched.sort(key=lambda x: x.averaged_from)
+        print([line.averaged_from for line in not_matched])
+
+        #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
+        not_matched = gh.top_p(not_matched, 0.5)
+        print([line.averaged_from for line in not_matched])
+
+        
         gh.lines = not_matched + untouched_lines  + merged_lines
         gh.reject_abnormal_lines()
         info["untouched_lines"] = [line.to_JSON() for line in untouched_lines]

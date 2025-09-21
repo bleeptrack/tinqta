@@ -54,6 +54,15 @@ export class PatternTrainer extends HTMLElement {
 			
 			this.canvas.clear()
 			let baseLines = []
+			if(data["initial"]){
+				for(let line of data["initial"]){
+					let l = this.canvas.drawLine(line, "black")
+					l.strokeWidth = 20
+					l.opacity = 0.2
+					l.strokeCap = "round"
+					baseLines.push(l)
+				}
+			}
 			if(data["base_list"]){
 				
 				for(let line of data["base_list"]){
@@ -76,6 +85,47 @@ export class PatternTrainer extends HTMLElement {
 					let l = this.canvas.drawLine(line, "grey")
 					l.opacity = 0.3
 					//l.translate(paper.view.center)
+				}
+			}
+			if(data["top_p"]){
+				for(let line of data["top_p"]){
+					let l = this.canvas.drawLine(line, "green")
+					l.opacity = 0.3
+					l.strokeWidth = 10
+					l.strokeCap = "round"
+					//l.translate(paper.view.center)
+				}
+			}
+			if(data["untouched_lines"]){
+				for(let line of data["untouched_lines"]){
+					let l = this.canvas.drawLine(line, "red")
+					l.opacity = 0.3
+					l.strokeWidth = 20
+					l.strokeCap = "round"
+				}
+			}
+			if(data["not_matched"]){
+				for(let line of data["not_matched"]){
+					let l = this.canvas.drawLine(line, "yellow")
+					l.opacity = 0.3
+					l.strokeWidth = 20
+					l.strokeCap = "round"
+				}
+			}
+			if(data["merged_lines"]){
+				for(let line of data["merged_lines"]){
+					let l = this.canvas.drawLine(line, "blue")
+					l.opacity = 0.3
+					l.strokeWidth = 20
+					l.strokeCap = "round"
+				}
+			}
+			if(data["diffused_lines"]){
+				for(let line of data["diffused_lines"]){
+					let l = this.canvas.drawLine(line, "black")
+					l.opacity = 1
+					l.strokeWidth = 4
+					l.strokeCap = "round"
 				}
 			}
 			if(data["prediction"]){

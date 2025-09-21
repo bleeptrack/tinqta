@@ -183,7 +183,118 @@ class GraphHandler:
             l.add_latent_vector(z, self.line_trainer.name)
             self.original_lines.append(l)
         print("original lines", len(self.original_lines))
+
+    def calculate_line_thresholds(self):
+
+        #calc delaugney über alle original lines
         
+        # Extract positions from all original lines
+        positions = []
+        for line in self.original_lines:
+            positions.append([line.position['x'], line.position['y']])
+        
+        # Convert to tensor
+        pos_tensor = torch.tensor(positions, dtype=torch.float)
+        print(f"Calculating Delaunay triangulation for {len(self.original_lines)} lines")
+        print(f"Position tensor shape: {pos_tensor.shape}")
+        
+        # Create Data object with positions
+        data = Data(pos=pos_tensor)
+        
+        # Apply Delaunay triangulation transform
+        data = T.Delaunay()(data)
+        
+        # Convert faces to edges if faces exist
+        if data.face is not None:
+            data = T.FaceToEdge()(data)
+            edge_index = data.edge_index
+        else:
+            print("No faces found in Delaunay triangulation")
+            edge_index = torch.empty((2, 0), dtype=torch.long)
+        
+        print(f"Delaunay triangulation created {edge_index.shape[1]} edges")
+        
+        # Store the triangulation for further use
+        delaunay_edges = edge_index
+        line_positions = pos_tensor
+        
+        #für jede linie finde connections
+        #finde den nähesten und den ähnlichsten
+        #
+        self.original_connection_info = {}
+        for line_idx, line in enumerate(self.original_lines):
+            print(f"Line {line_idx}: {line}")
+            
+            # Find all lines connected to this line via Delaunay triangulation
+            connected_indices = []
+            
+            # Check both directions of edges (since edge_index contains [src, dst] pairs)
+            for edge_idx in range(delaunay_edges.shape[1]):
+                src, dst = delaunay_edges[:, edge_idx]
+                
+                # If this line is the source, add the destination
+                if src.item() == line_idx:
+                    connected_indices.append(dst.item())
+                # If this line is the destination, add the source
+                elif dst.item() == line_idx:
+                    connected_indices.append(src.item())
+            
+            # Remove duplicates (in case of self-loops or multiple edges)
+            connected_indices = list(set(connected_indices))
+            
+            print(f"  Connected to lines: {connected_indices}")
+            
+            # Get the actual connected line objects
+            connected_lines = [self.original_lines[idx] for idx in connected_indices]
+            
+            # Calculate distances to connected lines
+           
+            for connected_idx, connected_line in zip(connected_indices, connected_lines):
+                distance = line.pos_diff(connected_line)
+                latent_diff = line.latent_line_diff(connected_line)
+                print(f"    Line {connected_idx}: distance = {distance:.3f}, latent_diff = {latent_diff:.3f}")
+                if line_idx not in self.original_connection_info:
+                    self.original_connection_info[line_idx] = {}
+                self.original_connection_info[line_idx][connected_idx] = {
+                    "distance": distance,
+                    "latent_diff": latent_diff
+                }
+            
+            print()  # Empty line for readability
+        
+       
+    def match_two_lines(self, line1, line2):
+        
+        # Find the most similar line from original_lines in latent space for line
+        closest_line1, closest_diff1, closest_idx1 = self.get_closest_original_line(line1)
+        allowed_indices = [idx for idx in self.original_connection_info[closest_idx1].keys()]
+        closest_line2, closest_diff2, closest_idx2 = self.get_closest_original_line(line2, allowed_indices)
+
+        if closest_idx1 == closest_idx2:
+            print("Lines have the same closest original line", line1.pos_diff(line2))
+            return True
+        
+        # Check if closest_idx1 has connection info and if closest_idx2 is connected to it
+        if (closest_idx1 in self.original_connection_info and 
+            closest_idx2 in self.original_connection_info[closest_idx1]):
+            info = self.original_connection_info[closest_idx1][closest_idx2]
+            pos_diff = line1.pos_diff(line2)
+            latent_diff = line1.latent_line_diff(line2)
+            if pos_diff < info["distance"] and latent_diff < info["latent_diff"]:
+                if pos_diff < info["distance"]/2 or latent_diff < info["latent_diff"]/2:
+                    print("Lines are similar:", pos_diff, "vs ", info["distance"]/2, "and", latent_diff, "vs", info["latent_diff"]/2)
+                    return True
+                else:
+                    print(
+                        f"CLOSE CALL: pos_diff = {pos_diff:.4f} (threshold: {info['distance']/2:.4f}), "
+                        f"latent_diff = {latent_diff:.4f} (threshold: {info['latent_diff']/2:.4f})"
+                    )
+                    return False
+            else:                    
+                return False
+        else:
+            print("No connection info found for lines", closest_idx1, closest_idx2)
+            return False
             
     def add_lines(self, data):
         for line in data:
@@ -352,15 +463,18 @@ class GraphHandler:
         else:
             return None
         
-    def get_closest_original_line(self, line):
+    def get_closest_original_line(self, line, allowed_indices=None):
         closest_line = None
         closest_diff = float('inf')
-        for original_line in self.original_lines:
+        closest_idx = None
+        for idx, original_line in enumerate(self.original_lines):
             diff = line.latent_line_diff(original_line)
-            if diff < closest_diff:
+            if diff < closest_diff and (allowed_indices is None or idx in allowed_indices):
                 closest_diff = diff
+                closest_line = original_line
+                closest_idx = idx
         
-        return closest_line, closest_diff
+        return closest_line, closest_diff, closest_idx
         
     def reject_abnormal_lines(self):
         threshhold = 1
@@ -369,7 +483,7 @@ class GraphHandler:
 
         print("rejecting abnormal lines. Current lines:", len(self.lines))
         for line in self.lines:
-            closest_original_line, closest_diff = self.get_closest_original_line(line)
+            _ , closest_diff, _ = self.get_closest_original_line(line)
             if closest_diff < threshhold:
                 accepted_lines.append(line)
                     
@@ -446,9 +560,8 @@ class GraphHandler:
                 data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=use_combinations)
                 
                 if data is None:
-                    print("line out of reference reach")
-                    #new_line = self.init_noisy_line_at_position(self.lines[i].position)
-                    #self.lines[i] = new_line
+                    print("line out of reference reach. adding new line", self.lines[i].position)
+                    
                     continue
                 if not isinstance(data, list):
                     data = [data]
@@ -603,12 +716,12 @@ class GraphHandler:
         #print([line.averaged_from for line in self.ghost_lines])
         self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=70, eps2=1, message="pos first")
         print([line.averaged_from for line in self.ghost_lines])
-        self.ghost_lines.sort(key=lambda x: x.averaged_from)
-        print([line.averaged_from for line in self.ghost_lines])
+        #self.ghost_lines.sort(key=lambda x: x.averaged_from)
+        #print([line.averaged_from for line in self.ghost_lines])
 
         #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
-        self.ghost_lines = self.top_p(self.ghost_lines, 0.5)
-        print([line.averaged_from for line in self.ghost_lines])
+        #self.ghost_lines = self.top_p(self.ghost_lines, 0.5)
+        #print([line.averaged_from for line in self.ghost_lines])
 
     def combine_ghost_and_main_lines(self):
         if len(self.ghost_lines) > 0:
@@ -624,6 +737,7 @@ class GraphHandler:
                 line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
                 line.update_position_from_reference({"x":i+random.randint(-random_offset, random_offset), "y":j+random.randint(-random_offset, random_offset)})
                 self.lines.append(line)
+
         #self.ghost_lines = []
 
     def top_p(self, lines, p):
@@ -903,14 +1017,18 @@ class GraphHandler:
 
 
 
+    
 
     
     def get_distance_matrix(self):
+        return GraphHandler.get_distance_matrix_static(self.lines)
 
+    @staticmethod
+    def get_distance_matrix_static(lines):
         dist_list = []
-        for line1 in self.lines:
+        for line1 in lines:
             if line1.position_type == "absolute":
-                dist_list.append( [ line1.position['x'], line1.position['y'] ] )
+                dist_list.append([line1.position['x'], line1.position['y']])
             else:
                 raise ValueError("prediction with relative position in lines")
 
@@ -924,16 +1042,19 @@ class GraphHandler:
             line_trainer = self.line_trainer
         return GraphHandler.decompose_node_hidden_state(z, line_trainer)
 
-    def match_to_fixed_lines(self, lines, ghost_lines, pos_eps=30, latent_eps=1.5):
+    def match_to_fixed_lines(self, lines, ghost_lines):
 
         line_buckets = {}
         not_matched = []
         
-        for ghost_line in ghost_lines:
+        for Gidx, ghost_line in enumerate(ghost_lines):
             belongs = False
+            
             for idx, line in enumerate(lines):
                 #das ist gerade der erst best passende statt der näheste
-                if line.pos_diff(ghost_line) < pos_eps and line.latent_line_diff(ghost_line) < latent_eps:
+                #vllt über distanz matrix vorauswählen und dann nur lat diff vergleichen und da den besten nehmen?
+               
+                if self.match_two_lines(line, ghost_line):
                     if idx not in line_buckets:
                         line_buckets[idx] = []
                     line_buckets[idx].append(ghost_line)
@@ -942,11 +1063,13 @@ class GraphHandler:
 
             if not belongs:    
                 ghost_line.is_fixed = True
-                ghost_line.averaged_from = 1
+                #ghost_line.averaged_from = 1
                 not_matched.append(ghost_line)
 
         untouched_lines = [line for idx, line in enumerate(lines) if idx not in line_buckets]
-        print("untouched_lines", untouched_lines)
+        print("untouched_lines", len(untouched_lines))
+        print("line_buckets keys:", list(line_buckets.keys()))
+        print("total lines:", len(lines))
 
         # Pretty print the line_buckets and not_matched for inspection
         print("line_buckets content:")
