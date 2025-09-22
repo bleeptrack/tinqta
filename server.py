@@ -367,9 +367,10 @@ def generate_pattern(data):
         pt = PatternTrainer(data['name'])
         gh.clear()
         gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
-        gh.init_original()
+        
         gh.calculate_original_lines()
         gh.calculate_line_thresholds()
+        gh.init_original()
 
         #gh.random_fill()
 
@@ -391,12 +392,12 @@ def generate_pattern(data):
         
         count = 0
         while gh.calculate_gen_step():
-            #info["initial"] = [line.to_JSON() for line in gh.lines]
+            info["initial"] = [line.to_JSON() for line in gh.lines]
             info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
             count += 1
-            if count % 100 == 0:
+            if count % 10 == 0:
                 print("loop count", count)
-            if count > 200:
+            if count > 100:
                 toast("LOOP LIMIT reached")
                 gh.gen_step = []
                 break

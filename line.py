@@ -100,6 +100,11 @@ class Line():
         if(self.position_type == "relative"):
             self.position['x'] *= config['max_dist']
             self.position['y'] *= config['max_dist']
+        if(self.position_type == "absolute"):
+            print("updating position on a line that is already absolute. Setting to 0,0 first")
+            self.position['x'] = 0
+            self.position['y'] = 0
+
         self.position['x'] += point['x']
         self.position['y'] += point['y']
         self.position_type = "absolute"

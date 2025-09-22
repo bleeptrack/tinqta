@@ -77,7 +77,7 @@ export class PatternTrainer extends HTMLElement {
 				}
 			}
 			if(data["ground_truth"]){
-				let l = this.canvas.drawLine(data["ground_truth"], "red")
+				let l = this.canvas.drawLine(data["ground_truth"], "purple")
 				//l.translate(paper.view.center)
 			}
 			if(data["ghost_lines"]){

@@ -222,6 +222,9 @@ class GraphHandler:
         #finde den nähesten und den ähnlichsten
         #
         self.original_connection_info = {}
+        self.avg_latent_diff = []
+        self.avg_pos_diff = []
+
         for line_idx, line in enumerate(self.original_lines):
             print(f"Line {line_idx}: {line}")
             
@@ -259,8 +262,20 @@ class GraphHandler:
                     "distance": distance,
                     "latent_diff": latent_diff
                 }
+                self.avg_latent_diff.append(latent_diff)
+                self.avg_pos_diff.append(distance)
             
             print()  # Empty line for readability
+
+        self.min_latent_diff = min(self.avg_latent_diff)
+        self.min_pos_diff = min(self.avg_pos_diff)
+        self.avg_latent_diff = float(sum(self.avg_latent_diff)) / len(self.avg_latent_diff)
+        self.avg_pos_diff = float(sum(self.avg_pos_diff)) / len(self.avg_pos_diff)
+
+        print("Average latent diff:", self.avg_latent_diff)
+        print("Average pos diff:", self.avg_pos_diff)
+        print("Min latent diff:", self.min_latent_diff)
+        print("Min pos diff:", self.min_pos_diff)
         
        
     def match_two_lines(self, line1, line2):
@@ -278,16 +293,20 @@ class GraphHandler:
         if (closest_idx1 in self.original_connection_info and 
             closest_idx2 in self.original_connection_info[closest_idx1]):
             info = self.original_connection_info[closest_idx1][closest_idx2]
+
             pos_diff = line1.pos_diff(line2)
             latent_diff = line1.latent_line_diff(line2)
+            pos_percentage = pos_diff / info["distance"]
+            latent_percentage = latent_diff / info["latent_diff"]
+
             if pos_diff < info["distance"] and latent_diff < info["latent_diff"]:
-                if pos_diff < info["distance"]/2 or latent_diff < info["latent_diff"]/2:
-                    print("Lines are similar:", pos_diff, "vs ", info["distance"]/2, "and", latent_diff, "vs", info["latent_diff"]/2)
+                if pos_percentage + latent_percentage < 1.5:
+                    print("Lines are similar:", pos_diff, "vs ", info["distance"]/2, "and", latent_diff, "vs", info["latent_diff"]/2, "and percentage", pos_percentage + latent_percentage)
                     return True
                 else:
                     print(
-                        f"CLOSE CALL: pos_diff = {pos_diff:.4f} (threshold: {info['distance']/2:.4f}), "
-                        f"latent_diff = {latent_diff:.4f} (threshold: {info['latent_diff']/2:.4f})"
+                        f"CLOSE CALL: pos_diff = {pos_diff:.4f} (threshold: {info['distance']/2:.4f}, percentage: {pos_percentage:.4f}), "
+                        f"latent_diff = {latent_diff:.4f} (threshold: {info['latent_diff']/2:.4f}, percentage: {latent_percentage:.4f})"
                     )
                     return False
             else:                    
@@ -357,10 +376,26 @@ class GraphHandler:
                 ground_truth.is_fixed = True
                 self.lines.append(ground_truth)
                 for k in range(data.x.size()[0]):
-                    n = self.decompose_node(data.x[k])
+                    noisy_data_k = data.x[k].clone() + torch.randn(data.x[k].size()) * noise_level
+                    n = self.decompose_node(noisy_data_k)
                     n.update_position_from_reference(reference_position)
                     n.is_fixed = True
                     self.lines.append(n)
+
+        # grid = 300
+      
+        # for i in range(0,3*distance,grid):
+        #     for j in range(0,3*distance,grid):
+        #         reference_position = {"x":i, "y":j}
+        #         filler_line = random.choice(self.original_lines).clone()
+        #         filler_line.update_position_from_reference(reference_position)
+        #         for line in self.lines:
+        #             if line.pos_diff(filler_line) < config['max_dist']:
+        #                 line.is_fixed = True
+        #                 filler_line.is_fixed = True
+        #                 self.lines.append(filler_line)
+        #                 print("Added filler line at", reference_position, len(self.lines),line.pos_diff(filler_line), config['max_dist'] )
+        #                 break
 
     def random_fill(self, fieldX=800, fieldY=800, retry_count=300, lineTrainer=None, patternTrainer=None, noise_level=0.01):
         if lineTrainer is None:
@@ -477,7 +512,8 @@ class GraphHandler:
         return closest_line, closest_diff, closest_idx
         
     def reject_abnormal_lines(self):
-        threshhold = 1
+        threshhold = self.avg_latent_diff /4
+        print("rejecting abnormal lines. Threshhold:", threshhold)
         accepted_lines = []
         nr_lines = len(self.lines)
 
@@ -560,7 +596,7 @@ class GraphHandler:
                 data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=use_combinations)
                 
                 if data is None:
-                    print("line out of reference reach. adding new line", self.lines[i].position)
+                    print("line out of reference reach")
                     
                     continue
                 if not isinstance(data, list):
@@ -714,7 +750,9 @@ class GraphHandler:
         #instead of latent first we could do a voronoi cell based clustering and see if the lines are close enough in space to belong together
         #self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_latent_clusters, func2=self.find_position_clusters, eps1=0.2, eps2=150, message="latent first")
         #print([line.averaged_from for line in self.ghost_lines])
-        self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=70, eps2=1, message="pos first")
+        eps_pos = self.avg_pos_diff /2
+        eps_lat = self.avg_latent_diff /4
+        self.ghost_lines = self.cluster_and_average(self.ghost_lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=eps_pos, eps2=eps_lat, message="pos first")  #70 1
         print([line.averaged_from for line in self.ghost_lines])
         #self.ghost_lines.sort(key=lambda x: x.averaged_from)
         #print([line.averaged_from for line in self.ghost_lines])
@@ -724,20 +762,32 @@ class GraphHandler:
         #print([line.averaged_from for line in self.ghost_lines])
 
     def combine_ghost_and_main_lines(self):
+        print("Removing not fixed lines:", len([line for line in self.lines if not line.is_fixed]))
+        self.lines = [line for line in self.lines if line.is_fixed]
         if len(self.ghost_lines) > 0:
             return self.match_to_fixed_lines(self.lines, self.ghost_lines)
+        else:
+            # If no ghost lines, return all lines as untouched, no not_matched, no merged
+            return self.lines, [], []
         
     def start_new_line(self):
         
         grid = 100
         random_offset = round(grid/2)
+        max_dist = config['max_dist']
+        
         for i in range(0,801,grid):
             for j in range(0,801,grid):
+                # Calculate the actual position with random offset
+                x = i + random.randint(-random_offset, random_offset)
+                y = j + random.randint(-random_offset, random_offset)
+
                 z = self.line_trainer.randomInitPoint()
                 line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-                line.update_position_from_reference({"x":i+random.randint(-random_offset, random_offset), "y":j+random.randint(-random_offset, random_offset)})
+                line.update_position_from_reference({"x": x, "y": y})
                 self.lines.append(line)
 
+                  
         #self.ghost_lines = []
 
     def top_p(self, lines, p):
@@ -1044,6 +1094,8 @@ class GraphHandler:
 
     def match_to_fixed_lines(self, lines, ghost_lines):
 
+        print("DEBUG: matching ghost lines to fixed lines", len(ghost_lines), "ghost lines and", len(lines), "fixed lines")
+
         line_buckets = {}
         not_matched = []
         
@@ -1067,9 +1119,10 @@ class GraphHandler:
                 not_matched.append(ghost_line)
 
         untouched_lines = [line for idx, line in enumerate(lines) if idx not in line_buckets]
-        print("untouched_lines", len(untouched_lines))
-        print("line_buckets keys:", list(line_buckets.keys()))
-        print("total lines:", len(lines))
+        print("DEBUG: untouched_lines", len(untouched_lines))
+        print("DEBUG: line_buckets keys:", list(line_buckets.keys()))
+        print("DEBUG: total input lines:", len(lines))
+        print("DEBUG: lines that will be merged:", len(line_buckets))
 
         # Pretty print the line_buckets and not_matched for inspection
         print("line_buckets content:")
@@ -1077,17 +1130,19 @@ class GraphHandler:
         for line_idx, ghosts in line_buckets.items():
             line = lines[line_idx]
             print(f"  Line id={id(line)}: {len(ghosts)} ghost(s)")
-            averaged_latent = GraphHandler.average_latent_vectors([line, *ghosts], line.position)
-            avg_line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
-            avg_line.update_position_from_reference(line.position)
-            avg_line.fixed = True
-            merged_lines.append(avg_line)
+            #averaged_latent = GraphHandler.average_latent_vectors([line, *ghosts], line.position)
+            #avg_line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
+            #avg_line.update_position_from_reference(line.position)
+            #avg_line.is_fixed = True
+            #merged_lines.append(avg_line)
+            merged_lines.append(line)
             
 
 
-        print("not_matched content:")
-        print(f"  {len(not_matched)} ghost line(s) not matched")
-
+        print("DEBUG: not_matched content:")
+        print(f"DEBUG: {len(not_matched)} ghost line(s) not matched")
+        print(f"DEBUG: merged_lines created:", len(merged_lines))
+        print(f"DEBUG: CHECK: untouched({len(untouched_lines)}) + merged({len(merged_lines)}) = {len(untouched_lines) + len(merged_lines)} vs input lines({len(lines)})")
 
         return untouched_lines, not_matched, merged_lines
      
@@ -1108,10 +1163,12 @@ class GraphHandler:
             if label == -1 or len(cluster_lines) == 1:
                 final_lines.extend(cluster_lines)
             else:
+                
                 #final_lines.extend(cluster_lines)
                 clusters_latent = func2(cluster_lines, eps2)
-                for label, latent_lines in clusters_latent.items():
-                    if label == -1 or len(latent_lines) == 1:
+                
+                for latent_label, latent_lines in clusters_latent.items():
+                    if latent_label == -1 or len(latent_lines) == 1:
                         final_lines.extend(latent_lines)
                     else:
                         averaged_latent = GraphHandler.average_latent_vectors(latent_lines, latent_lines[0].position)
@@ -1120,6 +1177,7 @@ class GraphHandler:
                         if any(line.is_fixed for line in latent_lines):
                             line.is_fixed = True
                         line.averaged_from = len(latent_lines)
+                        line.cluster_label = label
                         final_lines.append(line)
         
       
