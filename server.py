@@ -381,80 +381,80 @@ def generate_pattern(data):
 
     else:
 
-        
-        info = {}
-        info["initial"] = [line.to_JSON() for line in gh.lines]
-        
-        
-
-        gh.reject_abnormal_lines()
-        gh.start_new_line()
-        
-        
-       
-        
-        count = 0
-        while gh.calculate_gen_step():
+        for run in range(5):
+            info = {}
             info["initial"] = [line.to_JSON() for line in gh.lines]
-            info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
-            count += 1
-            if count % 10 == 0:
-                print("loop count", count)
-            if count > 50:
-                toast("LOOP LIMIT reached")
-                gh.gen_step = []
-                break
             
-            emit('prediction', info)
+            
+
+            gh.reject_abnormal_lines()
+            gh.start_new_line()
+            
+            
+        
+            
+            count = 0
+            while gh.calculate_gen_step():
+                info["initial"] = [line.to_JSON() for line in gh.lines]
+                info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
+                count += 1
+                if count % 10 == 0:
+                    print("loop count", count)
+                if count > 50:
+                    toast("LOOP LIMIT reached")
+                    gh.gen_step = []
+                    break
                 
+                emit('prediction', info)
+                    
+
+                
+                gh.apply_gen_step()
+                socketio.sleep(0.01) 
+
+            gh.choose_ghost_lines()
+            info["top_p"] = [line.to_JSON() for line in gh.ghost_lines]
+            print("SERVER: after top_p", len(gh.ghost_lines), len(info["top_p"]))
+            emit('prediction', info)
+            untouched_lines, not_matched, merged_lines = gh.combine_ghost_and_main_lines()
+
+            not_matched.sort(key=lambda x: x.averaged_from)
+            print([line.averaged_from for line in not_matched])
+
+            #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
+            not_matched = gh.top_p(not_matched, 1)
+            print([line.averaged_from for line in not_matched])
 
             
-            gh.apply_gen_step()
-            socketio.sleep(0.01) 
+            gh.lines = not_matched  + merged_lines + untouched_lines
 
-        gh.choose_ghost_lines()
-        info["top_p"] = [line.to_JSON() for line in gh.ghost_lines]
-        print("SERVER: after top_p", len(gh.ghost_lines), len(info["top_p"]))
-        emit('prediction', info)
-        untouched_lines, not_matched, merged_lines = gh.combine_ghost_and_main_lines()
+            gh.reject_abnormal_lines()
+            info["untouched_lines"] = [line.to_JSON() for line in untouched_lines]
+            info["not_matched"] = [line.to_JSON() for line in not_matched]
+            info["merged_lines"] = [line.to_JSON() for line in merged_lines]
+            emit('prediction', info)
 
-        not_matched.sort(key=lambda x: x.averaged_from)
-        print([line.averaged_from for line in not_matched])
+            for line in gh.lines:
+                line.stopped = True
+                line.is_fixed = True
 
-        #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
-        not_matched = gh.top_p(not_matched, 0.7)
-        print([line.averaged_from for line in not_matched])
+            # for i in range(200):
+            #     gh.self_arrange()
+            #     info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
+            #     emit('prediction', info)
 
-        
-        gh.lines = not_matched  + merged_lines + untouched_lines
+            # gh.reject_abnormal_lines()
 
-        gh.reject_abnormal_lines()
-        info["untouched_lines"] = [line.to_JSON() for line in untouched_lines]
-        info["not_matched"] = [line.to_JSON() for line in not_matched]
-        info["merged_lines"] = [line.to_JSON() for line in merged_lines]
-        emit('prediction', info)
-
-        for line in gh.lines:
-            line.stopped = True
-            line.is_fixed = True
-
-        # for i in range(200):
-        #     gh.self_arrange()
-        #     info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
-        #     emit('prediction', info)
-
-        # gh.reject_abnormal_lines()
-
-        info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
-        emit('prediction', info)
-        
-
-        # for i in range(300):
-        #     print("DIFFUSING ROUND", i)
+            info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
+            emit('prediction', info)
             
-        #     gh.self_arrange()
-        #     info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
-        #     emit('prediction', info)
+
+            # for i in range(300):
+            #     print("DIFFUSING ROUND", i)
+                
+            #     gh.self_arrange()
+            #     info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
+            #     emit('prediction', info)
             
 
             

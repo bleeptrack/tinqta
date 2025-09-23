@@ -300,7 +300,7 @@ class GraphHandler:
             latent_percentage = latent_diff / info["latent_diff"]
 
             if pos_diff < info["distance"] and latent_diff < info["latent_diff"]:
-                if pos_percentage + latent_percentage < 1.5:
+                if pos_percentage + latent_percentage < 1.3:
                     print("Lines are similar:", pos_diff, "vs ", info["distance"]/2, "and", latent_diff, "vs", info["latent_diff"]/2, "and percentage", pos_percentage + latent_percentage)
                     return True
                 else:
@@ -360,8 +360,8 @@ class GraphHandler:
 
         distance = config['stroke_normalizing_size'] + config['max_dist']*2
         #for i in range(3):
-        for i in range(3):
-            for j in range(3):
+        for i in range(5):
+            for j in range(5):
                 print("i", i, "j", j)
                 data = patternTrainer.dataset.get_random_item()
                 self.test_data = data
@@ -778,15 +778,14 @@ class GraphHandler:
         
     def start_new_line(self):
         
-        grid = 100
+        grid = 200
         random_offset = round(grid/2)
         max_dist = config['max_dist']
         
-        for i in range(0,801,grid):
-            for j in range(0,801,grid):
+        for i in range(50):
                 # Calculate the actual position with random offset
-                x = i + random.randint(-random_offset, random_offset)
-                y = j + random.randint(-random_offset, random_offset)
+                x =  random.randint(0, 1800)
+                y =  random.randint(0, 1800)
 
                 z = self.line_trainer.randomInitPoint()
                 line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)

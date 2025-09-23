@@ -81,6 +81,7 @@ export class PaperCanvas extends HTMLElement {
 		
 
 		this.shadow.getElementById('downloadSvg').addEventListener('click', () => {
+			
 			// Get the SVG from Paper.js project
 			const svg = paper.project.exportSVG({ asString: true });
 
@@ -165,6 +166,7 @@ export class PaperCanvas extends HTMLElement {
 		bg.fillColor = 'white'
 		bgLayer.sendToBack()
 		let artLayer = new paper.Layer({name: "art"})
+		let resultLayer = new paper.Layer({name: "result"})
 		paper.project.layers["lines"].activate()
 		
 		

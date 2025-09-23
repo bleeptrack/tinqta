@@ -56,7 +56,7 @@ export class PatternTrainer extends HTMLElement {
 			let baseLines = []
 			if(data["initial"]){
 				for(let line of data["initial"]){
-					let l = this.canvas.drawLine(line, "black")
+					let l = this.canvas.drawLine(line, "black", paper.project.layers["lines"])
 					l.strokeWidth = 20
 					l.opacity = 0.2
 					l.strokeCap = "round"
@@ -67,7 +67,7 @@ export class PatternTrainer extends HTMLElement {
 				
 				for(let line of data["base_list"]){
 					if(line["is_fixed"]){
-						let l = this.canvas.drawLine(line, "orange")
+						let l = this.canvas.drawLine(line, "orange", paper.project.layers["lines"])
 						l.strokeWidth = 15
 						l.opacity = 0.5
 						baseLines.push(l)
@@ -160,7 +160,7 @@ export class PatternTrainer extends HTMLElement {
 				
 			}
 			
-			//this.canvas.centerDrawing()
+			this.canvas.centerDrawing()
 			//this.drawArt(data)
 		});
 		
