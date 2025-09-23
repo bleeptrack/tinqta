@@ -380,8 +380,11 @@ def generate_pattern(data):
         emit('prediction', info)
 
     else:
+
+        
         info = {}
         info["initial"] = [line.to_JSON() for line in gh.lines]
+        
         
 
         gh.reject_abnormal_lines()
@@ -397,7 +400,7 @@ def generate_pattern(data):
             count += 1
             if count % 10 == 0:
                 print("loop count", count)
-            if count > 100:
+            if count > 50:
                 toast("LOOP LIMIT reached")
                 gh.gen_step = []
                 break
@@ -419,11 +422,12 @@ def generate_pattern(data):
         print([line.averaged_from for line in not_matched])
 
         #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
-        not_matched = gh.top_p(not_matched, 0.5)
+        not_matched = gh.top_p(not_matched, 0.7)
         print([line.averaged_from for line in not_matched])
 
         
-        gh.lines = not_matched + untouched_lines  + merged_lines
+        gh.lines = not_matched  + merged_lines + untouched_lines
+
         gh.reject_abnormal_lines()
         info["untouched_lines"] = [line.to_JSON() for line in untouched_lines]
         info["not_matched"] = [line.to_JSON() for line in not_matched]
@@ -433,6 +437,13 @@ def generate_pattern(data):
         for line in gh.lines:
             line.stopped = True
             line.is_fixed = True
+
+        # for i in range(200):
+        #     gh.self_arrange()
+        #     info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
+        #     emit('prediction', info)
+
+        # gh.reject_abnormal_lines()
 
         info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
         emit('prediction', info)

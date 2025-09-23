@@ -382,20 +382,20 @@ class GraphHandler:
                     n.is_fixed = True
                     self.lines.append(n)
 
-        # grid = 300
+     
       
-        # for i in range(0,3*distance,grid):
-        #     for j in range(0,3*distance,grid):
-        #         reference_position = {"x":i, "y":j}
-        #         filler_line = random.choice(self.original_lines).clone()
-        #         filler_line.update_position_from_reference(reference_position)
-        #         for line in self.lines:
-        #             if line.pos_diff(filler_line) < config['max_dist']:
-        #                 line.is_fixed = True
-        #                 filler_line.is_fixed = True
-        #                 self.lines.append(filler_line)
-        #                 print("Added filler line at", reference_position, len(self.lines),line.pos_diff(filler_line), config['max_dist'] )
-        #                 break
+        # for i in range(0, 100):
+        #     reference_position = {"x":random.randint(0,2*distance), "y":random.randint(0,2*distance)}
+        #     filler_line = random.choice(self.original_lines).clone()
+        #     filler_line.update_position_from_reference(reference_position)
+            
+        #     if all(line.pos_diff(filler_line) > config['max_dist']*1.1 for line in self.lines):
+                
+        #         filler_line.is_fixed = True
+                    
+        #         self.lines.append(filler_line)
+        #         print("Added filler line at", reference_position)
+                    
 
     def random_fill(self, fieldX=800, fieldY=800, retry_count=300, lineTrainer=None, patternTrainer=None, noise_level=0.01):
         if lineTrainer is None:
@@ -565,6 +565,8 @@ class GraphHandler:
         self.gen_step = []
         diff_threshold = 0.01 / adaption_rate
 
+        data_to_predict = []
+
 
         if not hasattr(self, "ghost_lines"):
             self.ghost_lines = []
@@ -644,6 +646,8 @@ class GraphHandler:
                 
                 z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
                 adapted_z = previous_line_z + flexi_rate * (z - previous_line_z)       
+
+                data_to_predict.append(data)
                         
                     
                     
@@ -722,11 +726,13 @@ class GraphHandler:
         # INSERT_YOUR_CODE
         import random
         all_indices = list(range(len(self.lines)))
+
         num_to_select = max(1, int(len(all_indices) * 0.1))
         
         selected_indices = random.sample(all_indices, num_to_select)
         # INSERT_YOUR_CODE
         not_selected_lines = [self.lines[i] for i in all_indices if i not in selected_indices]
+        print("selected indices", selected_indices)
         for i in selected_indices:
             
             diff_line = self.diffuse(i)
