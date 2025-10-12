@@ -324,10 +324,11 @@ export class VectorizerCanvas extends HTMLElement {
 		let img = this.shadow.getElementById("image")
 		
 		let bgRemoveConfig = {
-			//model: 'isnet' | 'isnet_fp16' | 'isnet_quint8'; // The model to use. (Default "isnet_fp16")
+			device: "gpu",
+			model: 'isnet_fp16', //'isnet' | 'isnet_fp16' | 'isnet_quint8'; // The model to use. (Default "isnet_fp16")
 			output: {
-				format: 'image/png' //'image/png' | 'image/jpeg' | 'image/webp'; // The output format. (Default "image/png")
-				//quality: 0.8; // The quality. (Default: 0.8)
+				format: 'image/png', //'image/png' | 'image/jpeg' | 'image/webp'; // The output format. (Default "image/png")
+				quality: 0.8 // The quality. (Default: 0.8)
 				//type: 'foreground' | 'background' | 'mask'; // The output type. (Default "foreground")
 			}
 		}
@@ -340,14 +341,20 @@ export class VectorizerCanvas extends HTMLElement {
 			const imgTmp = new Image();
 			imgTmp.onload = () => {
 				let scaledImg = this.scaleImageTo1080p(imgTmp)
+				console.log("Starting background removal...")
+				
 				removeBackground(scaledImg, bgRemoveConfig).then((blob) => {
-				// The result is a blob encoded as PNG. It can be converted to an URL to be used as HTMLImage.src
+				// The result is a blob encoded as JPEG. It can be converted to an URL to be used as HTMLImage.src
+					console.log("Background removal completed!")
+					
 					const url = URL.createObjectURL(blob);
 					
 					img.src = url
-					console.log(url)
+					console.log("Image URL:", url)
 					this.video = img
 					
+				}).catch((error) => {
+					console.error("Background removal failed:", error);
 				})
 			};
 			imgTmp.src = event.target.result;
@@ -360,14 +367,20 @@ export class VectorizerCanvas extends HTMLElement {
 			const imgTmp = new Image();
 			imgTmp.onload = () => {
 				let scaledImg = this.scaleImageTo1080p(imgTmp)
+				console.log("Starting background removal...")
+				
 				removeBackground(scaledImg, bgRemoveConfig).then((blob) => {
-				// The result is a blob encoded as PNG. It can be converted to an URL to be used as HTMLImage.src
+				// The result is a blob encoded as JPEG. It can be converted to an URL to be used as HTMLImage.src
+					console.log("Background removal completed!")
+					
 					const url = URL.createObjectURL(blob);
 					
 					img.src = url
-					console.log(url)
+					console.log("Image URL:", url)
 					this.video = img
 					
+				}).catch((error) => {
+					console.error("Background removal failed:", error);
 				})
 			};
 			

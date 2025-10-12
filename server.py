@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from flask_socketio import SocketIO, send, emit
 from DrawData import GraphHandler
 from Model import LineTrainer, PatternTrainer
@@ -15,6 +15,13 @@ import torch
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app)
+
+# Add headers for cross-origin isolation to enable WebAssembly threading
+@app.after_request
+def after_request(response):
+    response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    return response
 
 #create folders if they dont exist yet
 Path("./baseData").mkdir(exist_ok=True)
