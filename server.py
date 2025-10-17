@@ -203,6 +203,7 @@ def new_pattern(data):
     gh.set_default_trainers(line_trainer=lineTrainer)
         
     gh.add_line_latentspace()
+
    
     gh.save_pattern_training_data(data['name'])
 
@@ -333,18 +334,25 @@ def sample_pattern(data):
     gh.clear()
     gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
 
-    z,y,x = pt.generate()
+    z,y,x,pos = pt.generate()
     pred = gh.decompose_node(z)
     ground_truth = gh.decompose_node(y)
+    
+    # Convert to absolute positions
+    pred.update_position_from_reference({'x': 0, 'y': 0}, max_dist=pt.max_dist)
+    ground_truth.update_position_from_reference({'x': 0, 'y': 0}, max_dist=pt.max_dist)
+    
     base_list = []
     for i in range(x.size()[0]):
         n = gh.decompose_node(x[i])
+        n.update_position_from_reference({'x': 0, 'y': 0}, max_dist=pt.max_dist)
         base_list.append(n.to_JSON())
 
     info = {}
-    info["prediction"] = pred.to_JSON()
-    info["ground_truth"] = ground_truth.to_JSON()
-    info["base_list"] = base_list
+    info["untouched_lines"] = [pred.to_JSON()]
+    info["not_matched"] = [ground_truth.to_JSON()]
+    info["merged_lines"] = base_list
+    info["pos"] = pos
 
     emit('prediction', info)
 
@@ -370,7 +378,7 @@ def generate_pattern(data):
         
         gh.calculate_original_lines()
         gh.calculate_line_thresholds()
-        gh.init_original()
+        gh.init_original(noise_level=0)
 
         #gh.random_fill()
 
@@ -394,7 +402,7 @@ def generate_pattern(data):
         
             
             count = 0
-            while gh.calculate_gen_step():
+            while gh.calculate_gen_step(use_combinations=False):
                 info["initial"] = [line.to_JSON() for line in gh.lines]
                 info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
                 count += 1

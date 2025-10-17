@@ -682,6 +682,14 @@ class PatternTrainer():
         print("dataset info after loading ", len(self.dataset), self.dataset.level)
         self.loader = DataLoader(self.dataset.data, batch_size=config['batch_size_pattern'], shuffle=True)
         
+        # Load max_dist from dataset or use default for backwards compatibility
+        if hasattr(self.dataset, 'max_dist') and self.dataset.max_dist is not None:
+            self.max_dist = self.dataset.max_dist
+            print(f"Loaded max_dist from dataset: {self.max_dist}")
+        else:
+            self.max_dist = 150  # Default fallback for old datasets
+            print(f"WARNING: max_dist not found in dataset, using default: {self.max_dist}")
+        
         self.in_channels = self.out_channels = self.dataset.num_features
         self.hidden_channels = self.dataset.num_features*2
 
@@ -698,7 +706,17 @@ class PatternTrainer():
         self.model = self.model.to(device)
         if osp.exists(self.model_path):
             print("PATTERNMODEL EXISTS. LOADING...", self.model_path)
-            self.model.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu'), weights_only=False))
+            checkpoint = torch.load(self.model_path, map_location=torch.device('cpu'), weights_only=False)
+            # Handle both old format (just state dict) and new format (dict with state_dict and max_dist)
+            if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                self.model.load_state_dict(checkpoint['state_dict'])
+                if 'max_dist' in checkpoint:
+                    self.max_dist = checkpoint['max_dist']
+                    print(f"Loaded max_dist from model checkpoint: {self.max_dist}")
+            else:
+                # Old format - just the state dict
+                self.model.load_state_dict(checkpoint)
+                print("Loaded model in old format (no max_dist in checkpoint)")
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         self.scheduler = None
 
@@ -714,13 +732,13 @@ class PatternTrainer():
         
         line_positions = torch.stack([torch.tensor([line['x'], line['y']], dtype=torch.float) for line in self.dataset.line_positions])
         centers = torch.stack([center_point['x'], center_point['y']], dim=1)
-        total_targets = target_point * config['max_dist'] + centers
+        total_targets = target_point * self.max_dist + centers
         
         # Calculate pairwise distances between line_positions and total_targets using cdist
         distances = torch.cdist(line_positions, total_targets)  # [25,500]
         reference_index = torch.argmin(distances, dim=0)
 
-        noisy_targets = total_targets + torch.randn_like(total_targets) * (noise_scale * config['max_dist'])
+        noisy_targets = total_targets + torch.randn_like(total_targets) * (noise_scale * self.max_dist)
         
 
         current_index = torch.argmin(torch.cdist(line_positions, noisy_targets), dim=0)
@@ -728,6 +746,7 @@ class PatternTrainer():
         problem_points = current_index != reference_index
         #print(problem_points.sum())
 
+        #der noisy point darf nicht näher an einem anderen dran sein! darum die schleife
         while problem_points.sum() > 0:
 
             noisy_targets[problem_points] = (total_targets[problem_points] - noisy_targets[problem_points]) * 0.1 + noisy_targets[problem_points]
@@ -737,7 +756,7 @@ class PatternTrainer():
             #print(problem_points.sum())
         
         
-        noisy_targets = (noisy_targets - centers) / config['max_dist']
+        noisy_targets = (noisy_targets - centers) / self.max_dist
         
         return noisy_targets
     
@@ -802,13 +821,21 @@ class PatternTrainer():
 
 
             if epoch % 50 == 0:
-                torch.save(self.model.state_dict(), self.model_path)
+                checkpoint = {
+                    'state_dict': self.model.state_dict(),
+                    'max_dist': self.max_dist
+                }
+                torch.save(checkpoint, self.model_path)
                 print("saving...", "Epoch:", epoch, "Loss:", avg_epoch_loss/100, "current loss:", running_loss)
                 avg_epoch_loss = 0
                 if progress_callback:
                     progress_callback(self.name)
 
-        torch.save(self.model.state_dict(), self.model_path)
+        checkpoint = {
+            'state_dict': self.model.state_dict(),
+            'max_dist': self.max_dist
+        }
+        torch.save(checkpoint, self.model_path)
 
     def loss_pos(self, out, ground_truth):
         return torch.nn.MSELoss()(out, ground_truth)
@@ -893,11 +920,20 @@ class PatternTrainer():
         #print("dataset info", len(self.dataset), self.dataset.level)
 
         data = self.dataset.get_random_item()
+        
         pos = data.target_point + torch.randn_like(data.target_point) * 0.3
+        
        
         z = self.model.forward(data.x, data.edge_index, target_pos=pos)
+
+
+        pos = pos.squeeze(0)
+        absolute_target_point = pos * self.max_dist 
         
-        return z, data.y, data.x
+        absolute_target_point = {"x": absolute_target_point[0].item() + data.center_point['x'], "y": absolute_target_point[1].item() + data.center_point['y']}
+        
+        
+        return z, data.y, data.x, absolute_target_point
 
     def predict(self, x, edge_index, pos):
         self.model.eval()

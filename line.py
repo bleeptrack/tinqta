@@ -70,7 +70,7 @@ class Line():
     def _points2Tensor(self):
         return torch.tensor([[point['x'], point['y']] for point in self.points], dtype=torch.float)
     
-    def get_pattern_z(self, latent_name=None, center_position=None):
+    def get_pattern_z(self, latent_name=None, center_position=None, max_dist=None):
         if latent_name is None:
             if len(self.latent_vectors.keys()) == 1:
                 latent_name = list(self.latent_vectors.keys())[0]
@@ -82,10 +82,12 @@ class Line():
         posY = self.position['y']
 
         if center_position is not None:
+            if max_dist is None:
+                raise ValueError("max_dist is required when center_position is provided")
             posX -= center_position['x']
             posY -= center_position['y']
-            posX /= config['max_dist']
-            posY /= config['max_dist']
+            posX /= max_dist
+            posY /= max_dist
             
 
         if self.position_type == "absolute" and center_position is None:
@@ -95,11 +97,13 @@ class Line():
             self.latent_vectors[latent_name]
         ])
 
-    def update_position_from_reference(self, point):
+    def update_position_from_reference(self, point, max_dist=None):
         #print("updating position from reference", self.position, point)
         if(self.position_type == "relative"):
-            self.position['x'] *= config['max_dist']
-            self.position['y'] *= config['max_dist']
+            if max_dist is None:
+                raise ValueError("max_dist is required when converting from relative position")
+            self.position['x'] *= max_dist
+            self.position['y'] *= max_dist
         if(self.position_type == "absolute"):
             #print("updating position on a line that is already absolute. Setting to 0,0 first")
             self.position['x'] = 0

@@ -50,119 +50,124 @@ export class PatternTrainer extends HTMLElement {
 			}
 		});
 
-		this.socket.on('prediction', (data) => {
+	this.socket.on('prediction', (data) => {
+		
+		this.canvas.clear()
+		let baseLines = []
+		if(data["initial"]){
+			for(let line of data["initial"]){
+				let l = this.canvas.drawLine(line, "black", paper.project.layers["lines"])
+				l.strokeWidth = 20
+				l.opacity = 0.2
+				l.strokeCap = "round"
+				baseLines.push(l)
+			}
+		}
+		if(data["base_list"]){
 			
-			this.canvas.clear()
-			let baseLines = []
-			if(data["initial"]){
-				for(let line of data["initial"]){
-					let l = this.canvas.drawLine(line, "black", paper.project.layers["lines"])
-					l.strokeWidth = 20
-					l.opacity = 0.2
-					l.strokeCap = "round"
+			for(let line of data["base_list"]){
+				if(line["is_fixed"]){
+					let l = this.canvas.drawLine(line, "orange", paper.project.layers["lines"])
+					l.strokeWidth = 15
+					l.opacity = 0.5
 					baseLines.push(l)
 				}
-			}
-			if(data["base_list"]){
+				//l.translate(paper.view.center)
 				
-				for(let line of data["base_list"]){
-					if(line["is_fixed"]){
-						let l = this.canvas.drawLine(line, "orange", paper.project.layers["lines"])
-						l.strokeWidth = 15
-						l.opacity = 0.5
-						baseLines.push(l)
-					}
-					//l.translate(paper.view.center)
-					
-				}
 			}
-			if(data["ground_truth"]){
-				let l = this.canvas.drawLine(data["ground_truth"], "purple")
+		}
+		if(data["pos"]){
+			let c = new Path.Circle(data["pos"], 20)
+			c.fillColor = "red"
+			//l.translate(paper.view.center)
+		}
+		if(data["ground_truth"]){
+			let l = this.canvas.drawLine(data["ground_truth"], "purple")
+			//l.translate(paper.view.center)
+		}
+		if(data["ghost_lines"]){
+			for(let line of data["ghost_lines"]){
+				let l = this.canvas.drawLine(line, "grey")
+				l.opacity = 0.3
 				//l.translate(paper.view.center)
 			}
-			if(data["ghost_lines"]){
-				for(let line of data["ghost_lines"]){
-					let l = this.canvas.drawLine(line, "grey")
-					l.opacity = 0.3
-					//l.translate(paper.view.center)
-				}
+		}
+		if(data["top_p"]){
+			for(let line of data["top_p"]){
+				let l = this.canvas.drawLine(line, "green")
+				l.opacity = 0.3
+				l.strokeWidth = 10
+				l.strokeCap = "round"
+				//l.translate(paper.view.center)
 			}
-			if(data["top_p"]){
-				for(let line of data["top_p"]){
-					let l = this.canvas.drawLine(line, "green")
-					l.opacity = 0.3
-					l.strokeWidth = 10
-					l.strokeCap = "round"
-					//l.translate(paper.view.center)
-				}
+		}
+		if(data["untouched_lines"]){
+			for(let line of data["untouched_lines"]){
+				let l = this.canvas.drawLine(line, "red")
+				l.opacity = 0.3
+				l.strokeWidth = 20
+				l.strokeCap = "round"
 			}
-			if(data["untouched_lines"]){
-				for(let line of data["untouched_lines"]){
-					let l = this.canvas.drawLine(line, "red")
-					l.opacity = 0.3
-					l.strokeWidth = 20
-					l.strokeCap = "round"
-				}
+		}
+		if(data["not_matched"]){
+			for(let line of data["not_matched"]){
+				let l = this.canvas.drawLine(line, "yellow")
+				l.opacity = 0.3
+				l.strokeWidth = 20
+				l.strokeCap = "round"
 			}
-			if(data["not_matched"]){
-				for(let line of data["not_matched"]){
-					let l = this.canvas.drawLine(line, "yellow")
-					l.opacity = 0.3
-					l.strokeWidth = 20
-					l.strokeCap = "round"
-				}
+		}
+		if(data["merged_lines"]){
+			for(let line of data["merged_lines"]){
+				let l = this.canvas.drawLine(line, "blue")
+				l.opacity = 0.3
+				l.strokeWidth = 20
+				l.strokeCap = "round"
 			}
-			if(data["merged_lines"]){
-				for(let line of data["merged_lines"]){
-					let l = this.canvas.drawLine(line, "blue")
-					l.opacity = 0.3
-					l.strokeWidth = 20
-					l.strokeCap = "round"
-				}
+		}
+		if(data["diffused_lines"]){
+			for(let line of data["diffused_lines"]){
+				let l = this.canvas.drawLine(line, "black")
+				l.opacity = 1
+				l.strokeWidth = 4
+				l.strokeCap = "round"
 			}
-			if(data["diffused_lines"]){
-				for(let line of data["diffused_lines"]){
-					let l = this.canvas.drawLine(line, "black")
-					l.opacity = 1
-					l.strokeWidth = 4
-					l.strokeCap = "round"
-				}
-			}
-			if(data["prediction"]){
-				if(Array.isArray(data["prediction"])){
-					for(let line of data["prediction"]){
-						//let l = this.canvas.drawLine(line, "blue")
-						/*
-						if(line["used_ids"] && !line["is_fixed"]){
-							
-							for(let id of line["used_ids"]){
-								baseLines[id].strokeColor = "green"
-								baseLines[id].strokeWidth = 10
-								baseLines[id].opacity = 0.5
-								baseLines[id].strokeCap = "round"
-							}
-							
-							let c = new Path.Circle(l.position, this.canvas.config["max_dist"])
-							c.fillColor = "grey"
-							c.opacity = 0.5
-							c.sendToBack()
-							this.canvas.centerDrawing(c.position)
-							
+		}
+		if(data["prediction"]){
+			if(Array.isArray(data["prediction"])){
+				for(let line of data["prediction"]){
+					//let l = this.canvas.drawLine(line, "blue")
+					/*
+					if(line["used_ids"] && !line["is_fixed"]){
+						
+						for(let id of line["used_ids"]){
+							baseLines[id].strokeColor = "green"
+							baseLines[id].strokeWidth = 10
+							baseLines[id].opacity = 0.5
+							baseLines[id].strokeCap = "round"
 						}
-						*/
-						//l.translate(paper.view.center)
+						
+						let c = new Path.Circle(l.position, this.canvas.config["max_dist"])
+						c.fillColor = "grey"
+						c.opacity = 0.5
+						c.sendToBack()
+						this.canvas.centerDrawing(c.position)
+						
 					}
-				}else{
-					let l = this.canvas.drawLine(data["prediction"], "blue")
-					
+					*/
 					//l.translate(paper.view.center)
 				}
+			}else{
+				let l = this.canvas.drawLine(data["prediction"], "blue")
 				
+				//l.translate(paper.view.center)
 			}
 			
-			this.canvas.centerDrawing()
-			//this.drawArt(data)
-		});
+		}
+		
+		this.canvas.centerDrawing()
+		//this.drawArt(data)
+	});
 		
 		
 

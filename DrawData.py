@@ -68,8 +68,9 @@ class GraphDatasetHandler():
     def __init__(self, name, level):
         self.name = name
         self.level = level
+        self.max_dist = None
 
-    def save_data(self, data, line_positions=None):
+    def save_data(self, data, line_positions=None, max_dist=None):
 
         file_path = osp.join(osp.dirname(osp.realpath(__file__)), 'baseData', self.name +'-'+ self.level +'.pt')
         if osp.exists(file_path):
@@ -82,6 +83,7 @@ class GraphDatasetHandler():
         self.original_data = data.copy()
         self.config = config
         self.line_positions = line_positions
+        self.max_dist = max_dist
 
 
         if self.level == "pattern":
@@ -172,6 +174,9 @@ class GraphHandler:
         # rotation: float
         self.lines = []
         self.add_lines(data)
+        for line in self.lines:
+            line.is_fixed = True
+            line.stopped = True
 
 
     def calculate_original_lines(self):
@@ -301,6 +306,7 @@ class GraphHandler:
 
             if pos_diff < info["distance"] and latent_diff < info["latent_diff"]:
                 if pos_percentage + latent_percentage < 1.3:
+                #if pos_percentage < 0.5 and latent_percentage < 0.5:
                     print("Lines are similar:", pos_diff, "vs ", info["distance"]/2, "and", latent_diff, "vs", info["latent_diff"]/2, "and percentage", pos_percentage + latent_percentage)
                     return True
                 else:
@@ -330,12 +336,15 @@ class GraphHandler:
         if lineTrainer is None:
             lineTrainer = self.line_trainer
         
+        # Get max_dist from pattern_trainer if available
+        max_dist = self.pattern_trainer.max_dist if self.pattern_trainer else 150
+        
         for i in range(num_samples):
             z = lineTrainer.randomInitPoint()
             line = GraphHandler.decompose_node_hidden_state(z, lineTrainer)
             line.position_type = "absolute"
-            line.position['x'] *= config['max_dist']
-            line.position['y'] *= config['max_dist']
+            line.position['x'] *= max_dist
+            line.position['y'] *= max_dist
             self.lines.append(line)
             #lines.append(prediction2obj(line, lineTrainer))
 
@@ -358,10 +367,11 @@ class GraphHandler:
         if patternTrainer is None:
             patternTrainer = self.pattern_trainer
 
-        distance = config['stroke_normalizing_size'] + config['max_dist']*2
+        max_dist = patternTrainer.max_dist
+        distance = config['stroke_normalizing_size'] + max_dist*3
         #for i in range(3):
-        for i in range(5):
-            for j in range(5):
+        for i in range(2):
+            for j in range(2):
                 print("i", i, "j", j)
                 data = patternTrainer.dataset.get_random_item()
                 self.test_data = data
@@ -372,13 +382,13 @@ class GraphHandler:
 
                 noisy_data = data.y.clone() + torch.randn(data.y.size()) * noise_level
                 ground_truth = self.decompose_node(noisy_data)
-                ground_truth.update_position_from_reference(reference_position)
+                ground_truth.update_position_from_reference(reference_position, max_dist=max_dist)
                 ground_truth.is_fixed = True
                 self.lines.append(ground_truth)
                 for k in range(data.x.size()[0]):
                     noisy_data_k = data.x[k].clone() + torch.randn(data.x[k].size()) * noise_level
                     n = self.decompose_node(noisy_data_k)
-                    n.update_position_from_reference(reference_position)
+                    n.update_position_from_reference(reference_position, max_dist=max_dist)
                     n.is_fixed = True
                     self.lines.append(n)
 
@@ -405,13 +415,13 @@ class GraphHandler:
 
         count = retry_count
 
-        max_dist = config['max_dist']
+        max_dist = patternTrainer.max_dist
         
         while count > 0:
             sample = patternTrainer.dataset.get_random_item()
             noisy_data = sample.y.clone() + torch.randn(sample.y.size()) * noise_level
             ground_truth = self.decompose_node(noisy_data)
-            ground_truth.update_position_from_reference({"x":random.randint(0, fieldX), "y":random.randint(0, fieldY)})
+            ground_truth.update_position_from_reference({"x":random.randint(0, fieldX), "y":random.randint(0, fieldY)}, max_dist=max_dist)
             ground_truth.is_fixed = True
             self.lines.append(ground_truth)
 
@@ -438,6 +448,7 @@ class GraphHandler:
         
         print("lines before handling ghost lines", len(self.lines), "|ghosts:", len(self.ghost_lines))
         diff_threshold = 1
+        max_dist = self.pattern_trainer.max_dist if self.pattern_trainer else 150
         
         
         #for line in self.ghost_lines:
@@ -449,12 +460,12 @@ class GraphHandler:
             
             iteration_line = []
             #add original line to the mean mix
-            iteration_line.append(fixed_line.get_pattern_z(center_position=fixed_line.position))
+            iteration_line.append(fixed_line.get_pattern_z(center_position=fixed_line.position, max_dist=max_dist))
           
 
             #add ghost lines that are close to the original line to the mean mix
             for ghost_line in self.ghost_lines:
-                ghost_line_z = ghost_line.get_pattern_z(center_position=fixed_line.position)
+                ghost_line_z = ghost_line.get_pattern_z(center_position=fixed_line.position, max_dist=max_dist)
 
                 diff = torch.sum(torch.abs(torch.sub(iteration_line[0], ghost_line_z)))
                 if diff < diff_threshold:
@@ -465,7 +476,7 @@ class GraphHandler:
 
             
             averaged_line = self.decompose_node(averaged_line_z)
-            averaged_line.update_position_from_reference(fixed_line.position)
+            averaged_line.update_position_from_reference(fixed_line.position, max_dist=max_dist)
             averaged_line.is_fixed = True
           
 
@@ -564,6 +575,7 @@ class GraphHandler:
         
         self.gen_step = []
         diff_threshold = 0.01 / adaption_rate
+        max_dist = self.pattern_trainer.max_dist if self.pattern_trainer else 150
 
         data_to_predict = []
 
@@ -595,7 +607,7 @@ class GraphHandler:
                 
                 
 
-                data = self.sample_graph(i, node_dropout=self.lines[i].dropout, with_combinations=use_combinations)
+                data = self.sample_graph(i, node_dropout=self.lines[i].dropout, max_dist=max_dist, with_combinations=use_combinations)
                 
                 if data is None:
                     print("line out of reference reach")
@@ -641,7 +653,7 @@ class GraphHandler:
                 #flexi_rate = (self.lines[i].adaption_rate/len(self.lines[i].used_ids))
                 flexi_rate = self.lines[i].adaption_rate
                 #print("data", data.used_ids, self.lines[i].used_ids, flexi_rate)
-                previous_line_z = self.lines[i].get_pattern_z(center_position=data.center_point)
+                previous_line_z = self.lines[i].get_pattern_z(center_position=data.center_point, max_dist=max_dist)
                 
                 
                 z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
@@ -652,7 +664,7 @@ class GraphHandler:
                     
                     
                 line = self.decompose_node(adapted_z)
-                line.update_position_from_reference(data.center_point)
+                line.update_position_from_reference(data.center_point, max_dist=max_dist)
 
                 line.used_ids = data.used_ids
                 line.adaption_rate = flexi_rate
@@ -780,7 +792,7 @@ class GraphHandler:
         
         grid = 200
         random_offset = round(grid/2)
-        max_dist = config['max_dist']
+        max_dist = self.pattern_trainer.max_dist if self.pattern_trainer else 150
         
         for i in range(50):
                 # Calculate the actual position with random offset
@@ -789,7 +801,7 @@ class GraphHandler:
 
                 z = self.line_trainer.randomInitPoint()
                 line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-                line.update_position_from_reference({"x": x, "y": y})
+                line.update_position_from_reference({"x": x, "y": y}, max_dist=max_dist)
                 self.lines.append(line)
 
                   
@@ -878,11 +890,13 @@ class GraphHandler:
 
 
     
-    def create_pattern_graph(self, pred_id, ids, latent_name=None):
+    def create_pattern_graph(self, pred_id, ids, latent_name=None, max_dist=None):
         
         if len(ids) == 0:
             raise ValueError("no ids given to create pattern graph")
 
+        if max_dist is None:
+            raise ValueError("max_dist is required for create_pattern_graph")
 
         hidden_states = []
 
@@ -906,11 +920,11 @@ class GraphHandler:
         pos = torch.tensor([[self.lines[i].position['x'],self.lines[i].position['y']] for i in ids], dtype=torch.float)
 
         for i in ids:
-            hid = self.assemble_node_hidden_state(i, center_point, latent_name)
+            hid = self.assemble_node_hidden_state(i, center_point, latent_name, max_dist=max_dist)
             hidden_states.append(hid)
 
         if pred_id is not None:
-            ground_truth = self.assemble_node_hidden_state(pred_id, center_point, latent_name)
+            ground_truth = self.assemble_node_hidden_state(pred_id, center_point, latent_name, max_dist=max_dist)
         else:
             ground_truth = None
             #raise ValueError("no prediction id given. is this correct?", pred_id)
@@ -937,9 +951,12 @@ class GraphHandler:
 
     
     #center_point ist der punkt, der den referenzpunkt für das datensample darstellt
-    def assemble_node_hidden_state(self, current_id, center_point, latent_name=None):
+    def assemble_node_hidden_state(self, current_id, center_point, latent_name=None, max_dist=None):
         if latent_name is None:
             latent_name = self.pattern_trainer.name
+        
+        if max_dist is None:
+            raise ValueError("max_dist is required for assemble_node_hidden_state")
 
         line = self.lines[current_id]
         
@@ -952,8 +969,8 @@ class GraphHandler:
             raise ValueError("Relative position in line while assembling node hidden state")
 
         # versuch das relativ anzugeben im bezug zur ... maxdist?
-        delta_posX = delta_posX / config['max_dist']
-        delta_posY = delta_posY / config['max_dist']
+        delta_posX = delta_posX / max_dist
+        delta_posY = delta_posY / max_dist
         
         rot = line.rotation
         scale = line.scale
@@ -963,7 +980,9 @@ class GraphHandler:
 
 
     
-    def sample_graph(self, pred_id, latent_name=None, max_dist=config['max_dist'], include_pred_id=False, with_combinations=False, node_dropout=0.0):
+    def sample_graph(self, pred_id, latent_name=None, max_dist=None, include_pred_id=False, with_combinations=False, node_dropout=0.0):
+        if max_dist is None:
+            raise ValueError("max_dist is required for sample_graph")
         if with_combinations and node_dropout > 0:
             print("node dropout and combinations not supported")
             exit()
@@ -1011,6 +1030,7 @@ class GraphHandler:
             ids = keepers
 
         if len(ids) == 0:
+            print("NO IDS in GRAPH SAMPLE")
             return None
             
         
@@ -1030,14 +1050,14 @@ class GraphHandler:
                 if pred_id in combo_ids:
                     print("ERROR: pred_id in combo_ids", combo_ids, pred_id)
                     exit()
-                data = self.create_pattern_graph(pred_id, combo_ids, latent_name)
+                data = self.create_pattern_graph(pred_id, combo_ids, latent_name, max_dist=max_dist)
                 data.used_ids = combo_ids.tolist()
                 data_list.append(data)
             
             return data_list
 
         else:    
-            data = self.create_pattern_graph(pred_id, ids, latent_name)
+            data = self.create_pattern_graph(pred_id, ids, latent_name, max_dist=max_dist)
             data.used_ids = ids.tolist()
             return data
     
@@ -1049,15 +1069,23 @@ class GraphHandler:
         if name is None:
             name = latent_name
 
+        # Calculate max_dist from the dataset
+        print("Calculating max_dist for pattern dataset...")
+        self.calculate_original_lines()
+        self.calculate_line_thresholds()
+        max_dist = self.avg_pos_diff * config['max_dist_factor']
+        print(f"Calculated max_dist: {max_dist} (avg_pos_diff: {self.avg_pos_diff}, factor: {config['max_dist_factor']})")
+
         data_list = []
+
 
         for i in range(len(self.lines)):
             if config['create_pattern_combinations']:
-                x_list = self.sample_graph(i, latent_name, with_combinations=True)
+                x_list = self.sample_graph(i, latent_name, max_dist=max_dist, with_combinations=True)
                 if x_list is not None:
                     data_list.extend(x_list)
             else:
-                data = self.sample_graph(i, latent_name)  
+                data = self.sample_graph(i, latent_name, max_dist=max_dist)  
                 if data is not None:
                     data_list.append(data)
 
@@ -1066,7 +1094,7 @@ class GraphHandler:
                 
         print("saving dataset of length ", len(data_list))
         pattern_data = GraphDatasetHandler(name, "pattern")
-        pattern_data.save_data(data_list, positions)
+        pattern_data.save_data(data_list, positions, max_dist=max_dist)
         
 
 
@@ -1161,6 +1189,7 @@ class GraphHandler:
         final_lines = []
         if(len(lines) == 0):
             return lines
+        max_dist = self.pattern_trainer.max_dist if self.pattern_trainer else 150
         clusters_position = func1(lines, eps1)
         
 
@@ -1176,9 +1205,9 @@ class GraphHandler:
                     if latent_label == -1 or len(latent_lines) == 1:
                         final_lines.extend(latent_lines)
                     else:
-                        averaged_latent = GraphHandler.average_latent_vectors(latent_lines, latent_lines[0].position)
+                        averaged_latent = GraphHandler.average_latent_vectors(latent_lines, latent_lines[0].position, max_dist)
                         line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
-                        line.update_position_from_reference(latent_lines[0].position)
+                        line.update_position_from_reference(latent_lines[0].position, max_dist=max_dist)
                         if any(line.is_fixed for line in latent_lines):
                             line.is_fixed = True
                         line.averaged_from = len(latent_lines)
@@ -1215,10 +1244,10 @@ class GraphHandler:
         return lines
     
     @staticmethod
-    def average_latent_vectors(lines, center_position):
+    def average_latent_vectors(lines, center_position, max_dist):
         zs = []
         for line in lines:
-            z = line.get_pattern_z(center_position=center_position)
+            z = line.get_pattern_z(center_position=center_position, max_dist=max_dist)
             zs.append(z)
         return torch.mean(torch.stack(zs), dim=0)
 

@@ -6,7 +6,7 @@ config = {
     'stroke_normalizing_size': 100,
     'batch_size_pattern': 500,
     'batch_size_line': 500,
-    'max_dist' : 150,
+    'max_dist_factor': 1.2,
     'node_dropout': 0,
     'jitter_pattern': 1,
     'jitter_line': 0.01,
