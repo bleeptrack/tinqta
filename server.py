@@ -210,11 +210,94 @@ def new_pattern(data):
     pt = PatternTrainer(data['name'])
     pt.trainModel(send_progress_pattern)
 
-def send_progress_pattern(name):
+def send_progress_pattern(sample_data, trainer):
+    """
+    Visualize a pre-computed training sample.
+    Much faster than sample_pattern as it doesn't reload models.
+    """
+    print("sending progress pattern for epoch visualization")
+    emit_training_sample(sample_data, trainer)
+
+def emit_training_sample(sample_data, trainer, noisy_target_samples=None):
+    """
+    Emit visualization data for a training sample.
     
-    data = {'name': name}
-    print("sending progress pattern", data)
-    sample_pattern(data)
+    Args:
+        sample_data: Data object with prediction and noisy_target_point already set
+        trainer: The PatternTrainer instance
+        noisy_target_samples: Optional list of 100 noisy targets for visualization (only for sample_pattern)
+    """
+    import torch
+    
+    # Decompose prediction and ground truth
+    prediction = gh.decompose_node(sample_data.prediction)
+    ground_truth = gh.decompose_node(sample_data.y)
+    
+    # Convert to absolute positions
+    prediction.update_position_from_reference(sample_data.center_point, max_dist=trainer.max_dist)
+    ground_truth.update_position_from_reference(sample_data.center_point, max_dist=trainer.max_dist)
+    
+    # Process sample nodes (nodes used in the graph)
+    sample_nodes = []
+    for i in range(sample_data.x.size()[0]):
+        n = gh.decompose_node(sample_data.x[i])
+        n.update_position_from_reference(sample_data.center_point, max_dist=trainer.max_dist)
+        sample_nodes.append(n.to_JSON())
+    
+    # Process dropped-out nodes (nodes in proximity but not used)
+    dropped_out_nodes = []
+    if hasattr(sample_data, 'dropped_out_ids') and sample_data.dropped_out_ids:
+        for dropped_id in sample_data.dropped_out_ids:
+            line_pos = trainer.dataset.line_positions[dropped_id]
+            # Ensure position values are JSON-serializable
+            pos_dict = {
+                'x': float(line_pos['x']) if not isinstance(line_pos['x'], (int, float)) else line_pos['x'],
+                'y': float(line_pos['y']) if not isinstance(line_pos['y'], (int, float)) else line_pos['y']
+            }
+            dropped_out_nodes.append({
+                'position': pos_dict,
+                'is_dropped_out': True
+            })
+    
+    # Calculate target positions - ensure all values are Python floats
+    center_x = float(sample_data.center_point['x'].item() if torch.is_tensor(sample_data.center_point['x']) else sample_data.center_point['x'])
+    center_y = float(sample_data.center_point['y'].item() if torch.is_tensor(sample_data.center_point['y']) else sample_data.center_point['y'])
+    
+    # Original target
+    original_target = (sample_data.target_point.squeeze(0) * trainer.max_dist)
+    original_target_pos = {
+        "x": float(original_target[0].item()) + center_x, 
+        "y": float(original_target[1].item()) + center_y
+    }
+    
+    # Noisy target that was used
+    noisy_target = (sample_data.noisy_target_point.squeeze(0) * trainer.max_dist)
+    noisy_target_pos = {
+        "x": float(noisy_target[0].item()) + center_x, 
+        "y": float(noisy_target[1].item()) + center_y
+    }
+    
+    # Convert all noisy target samples to absolute positions (if provided)
+    noisy_target_samples_pos = []
+    if noisy_target_samples:
+        for sample in noisy_target_samples:
+            sample_abs = sample * trainer.max_dist
+            noisy_target_samples_pos.append({
+                "x": float(sample_abs[0].item()) + center_x,
+                "y": float(sample_abs[1].item()) + center_y
+            })
+
+    info = {}
+    info["prediction"] = [prediction.to_JSON()]
+    info["ground_truth"] = [ground_truth.to_JSON()]
+    info["sample_nodes"] = sample_nodes
+    info["dropped_out_nodes"] = dropped_out_nodes
+    info["original_target"] = original_target_pos
+    info["noisy_target"] = noisy_target_pos
+    if noisy_target_samples_pos:
+        info["noisy_target_samples"] = noisy_target_samples_pos
+
+    emit('prediction', info)
 
 
 # @socketio.on('sample pattern')
@@ -334,27 +417,28 @@ def sample_pattern(data):
     gh.clear()
     gh.set_default_trainers(pattern_trainer=pt, line_trainer=lineTrainer)
 
-    z,y,x,pos = pt.generate()
-    pred = gh.decompose_node(z)
-    ground_truth = gh.decompose_node(y)
+    # Get a random sample
+    import torch
+    sample_data = pt.dataset.get_random_item()
     
-    # Convert to absolute positions
-    pred.update_position_from_reference({'x': 0, 'y': 0}, max_dist=pt.max_dist)
-    ground_truth.update_position_from_reference({'x': 0, 'y': 0}, max_dist=pt.max_dist)
+    # Generate 100 possible noisy target points for visualization
+    noisy_target_samples = []
+    for _ in range(100):
+        noisy_target_relative = pt.get_noisy_target_point(sample_data, noise_scale=0.3)
+        noisy_target_samples.append(noisy_target_relative.squeeze(0))  # Store as [2]
     
-    base_list = []
-    for i in range(x.size()[0]):
-        n = gh.decompose_node(x[i])
-        n.update_position_from_reference({'x': 0, 'y': 0}, max_dist=pt.max_dist)
-        base_list.append(n.to_JSON())
-
-    info = {}
-    info["untouched_lines"] = [pred.to_JSON()]
-    info["not_matched"] = [ground_truth.to_JSON()]
-    info["merged_lines"] = base_list
-    info["pos"] = pos
-
-    emit('prediction', info)
+    # Use the first one for actual prediction generation
+    noisy_target_relative = noisy_target_samples[0].unsqueeze(0)  # Back to [1, 2]
+    
+    # Generate prediction using the noisy target
+    z, sample_data = pt.generate(data=sample_data, target_pos=noisy_target_relative)
+    
+    # Store prediction and noisy target in sample_data
+    sample_data.prediction = z
+    sample_data.noisy_target_point = noisy_target_relative
+    
+    # Use shared visualization function
+    emit_training_sample(sample_data, pt, noisy_target_samples=noisy_target_samples)
 
 
 @socketio.on('generate pattern')
@@ -389,7 +473,8 @@ def generate_pattern(data):
 
     else:
 
-        for run in range(5):
+        gh.ghost_lines = []
+        for run in range(1):
             info = {}
             info["initial"] = [line.to_JSON() for line in gh.lines]
             
@@ -418,7 +503,9 @@ def generate_pattern(data):
 
                 
                 gh.apply_gen_step()
-                socketio.sleep(0.01) 
+                socketio.sleep(0.2) 
+
+            
 
             gh.choose_ghost_lines()
             info["top_p"] = [line.to_JSON() for line in gh.ghost_lines]
@@ -441,6 +528,7 @@ def generate_pattern(data):
             info["not_matched"] = [line.to_JSON() for line in not_matched]
             info["merged_lines"] = [line.to_JSON() for line in merged_lines]
             emit('prediction', info)
+
 
             for line in gh.lines:
                 line.stopped = True

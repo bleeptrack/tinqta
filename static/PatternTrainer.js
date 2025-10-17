@@ -76,19 +76,66 @@ export class PatternTrainer extends HTMLElement {
 				
 			}
 		}
+		// Old key for backward compatibility
 		if(data["pos"]){
 			let c = new Path.Circle(data["pos"], 20)
 			c.fillColor = "red"
 			//l.translate(paper.view.center)
 		}
-		if(data["ground_truth"]){
-			let l = this.canvas.drawLine(data["ground_truth"], "purple")
-			//l.translate(paper.view.center)
+		
+		// Sample visualization - new proper naming
+		if(data["sample_nodes"]){
+			for(let line of data["sample_nodes"]){
+				let l = this.canvas.drawLine(line, "blue")
+				l.opacity = 0.3
+				l.strokeWidth = 20
+				l.strokeCap = "round"
+			}
 		}
+		if(data["dropped_out_nodes"]){
+			for(let node of data["dropped_out_nodes"]){
+				// Draw a small circle at the dropped-out position
+				let c = new Path.Circle(node.position, 15)
+				c.fillColor = "cyan"
+				c.opacity = 0.2
+				c.strokeColor = "cyan"
+				c.strokeWidth = 2
+			}
+		}
+		if(data["original_target"]){
+			let c = new Path.Circle(data["original_target"], 15)
+			c.fillColor = "green"
+			c.opacity = 0.5
+		}
+		if(data["noisy_target"]){
+			let c = new Path.Circle(data["noisy_target"], 20)
+			c.fillColor = "orange"
+			c.opacity = 0.7
+		}
+		if(data["noisy_target_samples"]){
+			// Draw all 100 possible noisy target positions as small dots
+			for(let sample of data["noisy_target_samples"]){
+				let c = new Path.Circle(sample, 10)
+				c.fillColor = "pink"
+				c.opacity = 0.3
+			}
+		}
+		if(data["ground_truth"]){
+			for(let line of data["ground_truth"]){
+				let l = this.canvas.drawLine(line, "yellow")
+				l.opacity = 0.5
+				l.strokeWidth = 20
+				l.strokeCap = "round"
+			}
+		}
+		
+		// Other visualizations used by generate pattern
 		if(data["ghost_lines"]){
 			for(let line of data["ghost_lines"]){
-				let l = this.canvas.drawLine(line, "grey")
+				let l = this.canvas.drawLine(line, "red")
 				l.opacity = 0.3
+				l.strokeWidth = 10
+				l.strokeCap = "round"
 				//l.translate(paper.view.center)
 			}
 		}
@@ -101,6 +148,8 @@ export class PatternTrainer extends HTMLElement {
 				//l.translate(paper.view.center)
 			}
 		}
+		
+		// Old keys for backward compatibility (deprecated)
 		if(data["untouched_lines"]){
 			for(let line of data["untouched_lines"]){
 				let l = this.canvas.drawLine(line, "red")
@@ -136,7 +185,10 @@ export class PatternTrainer extends HTMLElement {
 		if(data["prediction"]){
 			if(Array.isArray(data["prediction"])){
 				for(let line of data["prediction"]){
-					//let l = this.canvas.drawLine(line, "blue")
+					let l = this.canvas.drawLine(line, "red")
+					l.opacity = 0.5
+					l.strokeWidth = 20
+					l.strokeCap = "round"
 					/*
 					if(line["used_ids"] && !line["is_fixed"]){
 						
@@ -158,8 +210,10 @@ export class PatternTrainer extends HTMLElement {
 					//l.translate(paper.view.center)
 				}
 			}else{
-				let l = this.canvas.drawLine(data["prediction"], "blue")
-				
+				let l = this.canvas.drawLine(data["prediction"], "red")
+				l.opacity = 0.5
+				l.strokeWidth = 20
+				l.strokeCap = "round"
 				//l.translate(paper.view.center)
 			}
 			

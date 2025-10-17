@@ -141,11 +141,22 @@ class Line():
         return x, edge_index
     
     def to_JSON(self):
+        import torch
+        # Ensure all values are JSON-serializable (convert tensors to Python types)
+        scale = float(self.scale.item()) if torch.is_tensor(self.scale) else float(self.scale)
+        rotation = float(self.rotation.item()) if torch.is_tensor(self.rotation) else float(self.rotation)
+        
+        # Ensure position dict values are also JSON-serializable
+        position = {
+            'x': float(self.position['x'].item()) if torch.is_tensor(self.position['x']) else float(self.position['x']),
+            'y': float(self.position['y'].item()) if torch.is_tensor(self.position['y']) else float(self.position['y'])
+        }
+        
         line = {
             "points": self.points,
-            "scale": self.scale,
-            "rotation": self.rotation,
-            "position": self.position,
+            "scale": scale,
+            "rotation": rotation,
+            "position": position,
             "position_type": self.position_type,
         }
         if hasattr(self, 'used_ids'):

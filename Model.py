@@ -728,35 +728,96 @@ class PatternTrainer():
         #    print(train_data)
 
 
-    def get_noisy_target_point(self, target_point, center_point, noise_scale):
+    def get_noisy_target_point(self, data, noise_scale):
+        """
+        Generate noisy target points that remain closer to the original target than to any dropped-out node.
         
-        line_positions = torch.stack([torch.tensor([line['x'], line['y']], dtype=torch.float) for line in self.dataset.line_positions])
-        centers = torch.stack([center_point['x'], center_point['y']], dim=1)
-        total_targets = target_point * self.max_dist + centers
+        Args:
+            data: PyTorch Geometric Data object (batched or unbatched)
+            noise_scale: Scale factor for noise generation
+            
+        Returns:
+            noisy_targets: Normalized target points with noise (same shape as input)
+        """
+        # Handle both batched and unbatched cases
+        # target_point is stored as [1, 2] in data, so PyG batches it correctly
+        target_point = data.target_point
         
-        # Calculate pairwise distances between line_positions and total_targets using cdist
-        distances = torch.cdist(line_positions, total_targets)  # [25,500]
-        reference_index = torch.argmin(distances, dim=0)
-
-        noisy_targets = total_targets + torch.randn_like(total_targets) * (noise_scale * self.max_dist)
+        # With [1, 2] storage: PyG stacks to [batch_size, 2]
+        if target_point.dim() == 2:
+            batch_size = target_point.size(0)
+        else:
+            raise ValueError(f"Unexpected target_point shape: {target_point.shape}. Expected [batch_size, 2]")
         
-
-        current_index = torch.argmin(torch.cdist(line_positions, noisy_targets), dim=0)
-
-        problem_points = current_index != reference_index
-        #print(problem_points.sum())
-
-        #der noisy point darf nicht näher an einem anderen dran sein! darum die schleife
-        while problem_points.sum() > 0:
-
-            noisy_targets[problem_points] = (total_targets[problem_points] - noisy_targets[problem_points]) * 0.1 + noisy_targets[problem_points]
-
-            current_index = torch.argmin(torch.cdist(line_positions, noisy_targets), dim=0)
-            problem_points = current_index != reference_index
-            #print(problem_points.sum())
+        # Convert line_positions to tensor once
+        line_positions_tensor = torch.stack([torch.tensor([line['x'], line['y']], dtype=torch.float) for line in self.dataset.line_positions])
         
+        noisy_targets_list = []
         
-        noisy_targets = (noisy_targets - centers) / self.max_dist
+        for i in range(batch_size):
+            # Get center point - handle different batching formats
+            if isinstance(data.center_point, dict):
+                # Check if dict values are tensors (PyTorch Geometric batched format)
+                if torch.is_tensor(data.center_point['x']):
+                    # Batched: dict with tensor values
+                    center = torch.stack([data.center_point['x'][i], data.center_point['y'][i]])
+                else:
+                    # Unbatched: dict with scalar values
+                    center = torch.tensor([data.center_point['x'], data.center_point['y']], dtype=torch.float)
+            else:
+                # List of dicts (manual batching)
+                center = torch.tensor([data.center_point[i]['x'], data.center_point[i]['y']], dtype=torch.float)
+            
+            # Calculate absolute target position
+            total_target = target_point[i] * self.max_dist + center
+            
+            # Get dropped-out IDs - handle both single list and list of lists
+            dropped_out_ids = []
+            if hasattr(data, 'dropped_out_ids') and data.dropped_out_ids is not None:
+                try:
+                    if isinstance(data.dropped_out_ids, list):
+                        if len(data.dropped_out_ids) > 0 and isinstance(data.dropped_out_ids[0], list):
+                            # Batched case: list of lists
+                            if i < len(data.dropped_out_ids):
+                                dropped_out_ids = data.dropped_out_ids[i]
+                        elif batch_size == 1:
+                            # Single unbatched case: just a list
+                            dropped_out_ids = data.dropped_out_ids
+                        # else: batched but not list of lists - can't access per-sample, skip validation
+                except (IndexError, TypeError):
+                    # If we can't access dropped_out_ids properly, skip validation
+                    pass
+            
+            # Generate noisy target with validation
+            if not dropped_out_ids or len(dropped_out_ids) == 0:
+                noisy_target = total_target + torch.randn_like(total_target) * (noise_scale * self.max_dist)
+            else:
+                dropped_out_positions = line_positions_tensor[dropped_out_ids]
+                noisy_target = total_target + torch.randn_like(total_target) * (noise_scale * self.max_dist)
+                
+                # Validate and correct
+                max_iterations = 100
+                for iteration in range(max_iterations):
+                    distance_to_original = torch.norm(noisy_target - total_target)
+                    distances_to_dropped = torch.cdist(noisy_target.unsqueeze(0), dropped_out_positions)
+                    min_distance_to_dropped = distances_to_dropped.min()
+                    
+                    if distance_to_original < min_distance_to_dropped:
+                        break
+                    
+                    correction_factor = 0.3 if iteration < 50 else 0.5
+                    noisy_target = total_target + (noisy_target - total_target) * (1 - correction_factor)
+                else:
+                    # Max iterations reached
+                    print(f"Warning: Max iterations reached. Using minimal noise.")
+                    noisy_target = total_target + torch.randn_like(total_target) * (noise_scale * self.max_dist * 0.05)
+            
+            # Normalize back
+            noisy_target_normalized = (noisy_target - center) / self.max_dist
+            noisy_targets_list.append(noisy_target_normalized)
+        
+        # Stack results and return as [batch_size, 2]
+        noisy_targets = torch.stack(noisy_targets_list, dim=0)
         
         return noisy_targets
     
@@ -774,18 +835,18 @@ class PatternTrainer():
             #for train_data in self.dataset:
             for train_data in self.loader:
 
+                noise_scale = max(0.0, min(0.3 * (epoch - 200) / 300, 0.3))
+
                 # Add small random noise to target positions during training
-                if train_data.target_point is not None:
+                if noise_scale > 0:
                     # Ramp up noise from 0 to 0.05 between epochs 300-800
 
-                    noise_scale = max(0.0, min(0.3 * (epoch - 200) / 300, 0.3))
-                    #noise_scale = 0.3
-                    
-                    #noise = torch.randn_like(train_data.target_point) * noise_scale
-                    #new_target_point = train_data.target_point + noise
-                    new_target_point = self.get_noisy_target_point(train_data.target_point, train_data.center_point, noise_scale)
+                    new_target_point = self.get_noisy_target_point(train_data, noise_scale)
                     noise_x = torch.randn_like(train_data.x) * noise_scale/30 
                     train_data.x = train_data.x + noise_x
+
+                else:
+                    new_target_point = train_data.target_point
 
 
                 
@@ -828,8 +889,21 @@ class PatternTrainer():
                 torch.save(checkpoint, self.model_path)
                 print("saving...", "Epoch:", epoch, "Loss:", avg_epoch_loss/100, "current loss:", running_loss)
                 avg_epoch_loss = 0
-                if progress_callback:
-                    progress_callback(self.name)
+            
+            # Send visualization using first sample from last training batch
+            if progress_callback and train_data is not None:
+                # Extract first sample from batch using PyG's built-in method
+                data_list = train_data.to_data_list()
+                first_sample = data_list[0]
+                
+                # Add the noisy target and prediction that were used/generated
+                first_sample.noisy_target_point = new_target_point[0].unsqueeze(0)
+                
+                # Reshape output to [batch_size, 7] to extract first sample's full prediction
+                out_reshaped = out.view(-1, 7)
+                first_sample.prediction = out_reshaped[0]
+                
+                progress_callback(first_sample, self)
 
         checkpoint = {
             'state_dict': self.model.state_dict(),
@@ -864,10 +938,10 @@ class PatternTrainer():
         latent_loss = torch.nn.MSELoss()(pred_latent, gt_latent)
 
         
-        pos_weight = 5
+        pos_weight = 1
         scale_weight = 1  
         rot_weight = 1    
-        latent_weight = 0.5
+        latent_weight = 1
 
         normalizer = pos_weight + scale_weight + rot_weight + latent_weight
 
@@ -914,26 +988,34 @@ class PatternTrainer():
     #     datanum = random.randint(0,self.dataset.len()-1)
     #     return self.dataset[datanum].x
 
-    def generate(self):
-        #wir haben hier noch nie probiert mit einem richtigen random z was zu generieren, oder?
+    def generate(self, data=None, target_pos=None):
+        """
+        Generate a prediction from a sample.
+        
+        Args:
+            data: Optional data object to use. If None, gets a random sample.
+            target_pos: Optional target position to use [2] or [1, 2]. If None, uses the original target from data.
+        
+        Returns:
+            z: The predicted output
+            data: The sample data object
+        """
         self.model.eval()
-        #print("dataset info", len(self.dataset), self.dataset.level)
-
-        data = self.dataset.get_random_item()
         
-        pos = data.target_point + torch.randn_like(data.target_point) * 0.3
+        if data is None:
+            data = self.dataset.get_random_item()
         
-       
-        z = self.model.forward(data.x, data.edge_index, target_pos=pos)
-
-
-        pos = pos.squeeze(0)
-        absolute_target_point = pos * self.max_dist 
+        # Use provided target position or the original from data
+        if target_pos is None:
+            target_pos = data.target_point
         
-        absolute_target_point = {"x": absolute_target_point[0].item() + data.center_point['x'], "y": absolute_target_point[1].item() + data.center_point['y']}
+        # Ensure target_pos has batch dimension [1, 2] for model.forward
+        if target_pos.dim() == 1:
+            target_pos = target_pos.unsqueeze(0)
         
+        z = self.model.forward(data.x, data.edge_index, target_pos=target_pos)
         
-        return z, data.y, data.x, absolute_target_point
+        return z, data
 
     def predict(self, x, edge_index, pos):
         self.model.eval()

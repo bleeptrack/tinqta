@@ -305,7 +305,7 @@ class GraphHandler:
             latent_percentage = latent_diff / info["latent_diff"]
 
             if pos_diff < info["distance"] and latent_diff < info["latent_diff"]:
-                if pos_percentage + latent_percentage < 1.3:
+                if pos_percentage + latent_percentage < 1.1:
                 #if pos_percentage < 0.5 and latent_percentage < 0.5:
                     print("Lines are similar:", pos_diff, "vs ", info["distance"]/2, "and", latent_diff, "vs", info["latent_diff"]/2, "and percentage", pos_percentage + latent_percentage)
                     return True
@@ -523,7 +523,7 @@ class GraphHandler:
         return closest_line, closest_diff, closest_idx
         
     def reject_abnormal_lines(self):
-        threshhold = self.avg_latent_diff /4
+        threshhold = self.avg_latent_diff /3
         print("rejecting abnormal lines. Threshhold:", threshhold)
         accepted_lines = []
         nr_lines = len(self.lines)
@@ -890,7 +890,7 @@ class GraphHandler:
 
 
     
-    def create_pattern_graph(self, pred_id, ids, latent_name=None, max_dist=None):
+    def create_pattern_graph(self, pred_id, ids, latent_name=None, max_dist=None, dropped_out_ids=None):
         
         if len(ids) == 0:
             raise ValueError("no ids given to create pattern graph")
@@ -936,9 +936,14 @@ class GraphHandler:
         
         x = torch.stack(hidden_states, dim=0) #vllt nochmal checken ob der jetzt "richtig rum" ist
 
+        # Store target_point with batch dimension [1, 2] for proper PyG batching
+        # PyG will stack these correctly: [1, 2] + [1, 2] -> [batch_size, 2]
         target_point = ground_truth[:2].unsqueeze(0) if ground_truth is not None else None
         
         data = Data(x=x, y=ground_truth, center_point=center_point, pos=pos, target_point=target_point)
+        
+        # Store dropped-out node IDs (will be empty list if not provided)
+        data.dropped_out_ids = dropped_out_ids if dropped_out_ids is not None else []
         
         data = T.Delaunay()(data)
         if data.face is not None:
@@ -1050,14 +1055,20 @@ class GraphHandler:
                 if pred_id in combo_ids:
                     print("ERROR: pred_id in combo_ids", combo_ids, pred_id)
                     exit()
-                data = self.create_pattern_graph(pred_id, combo_ids, latent_name, max_dist=max_dist)
+                
+                # Calculate dropped-out nodes: all proximity nodes not in this combination
+                dropped_out_mask = ~combo
+                dropped_out_ids = ids[dropped_out_mask].tolist()
+                
+                data = self.create_pattern_graph(pred_id, combo_ids, latent_name, max_dist=max_dist, dropped_out_ids=dropped_out_ids)
                 data.used_ids = combo_ids.tolist()
                 data_list.append(data)
             
             return data_list
 
         else:    
-            data = self.create_pattern_graph(pred_id, ids, latent_name, max_dist=max_dist)
+            # No combinations means all nearby nodes are used, so no dropped-out nodes
+            data = self.create_pattern_graph(pred_id, ids, latent_name, max_dist=max_dist, dropped_out_ids=[])
             data.used_ids = ids.tolist()
             return data
     
