@@ -93,32 +93,19 @@ export class PatternTrainer extends HTMLElement {
 			}
 		}
 		if(data["dropped_out_nodes"]){
-			for(let node of data["dropped_out_nodes"]){
+			for(let pos of data["dropped_out_nodes"]){
 				// Draw a small circle at the dropped-out position
-				let c = new Path.Circle(node.position, 15)
+				let c = new Path.Circle(pos, 15)
 				c.fillColor = "cyan"
 				c.opacity = 0.2
 				c.strokeColor = "cyan"
 				c.strokeWidth = 2
 			}
 		}
-		if(data["original_target"]){
-			let c = new Path.Circle(data["original_target"], 15)
+		if(data["target_pos"]){
+			let c = new Path.Circle(data["target_pos"], 15)
 			c.fillColor = "green"
 			c.opacity = 0.5
-		}
-		if(data["noisy_target"]){
-			let c = new Path.Circle(data["noisy_target"], 20)
-			c.fillColor = "orange"
-			c.opacity = 0.7
-		}
-		if(data["noisy_target_samples"]){
-			// Draw all 100 possible noisy target positions as small dots
-			for(let sample of data["noisy_target_samples"]){
-				let c = new Path.Circle(sample, 10)
-				c.fillColor = "pink"
-				c.opacity = 0.3
-			}
 		}
 		if(data["ground_truth"]){
 			for(let line of data["ground_truth"]){

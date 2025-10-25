@@ -678,236 +678,199 @@ class PatternTrainer():
         self.line_trainer = LineTrainer(name)
 
         self.model_path = osp.join(osp.dirname(osp.realpath(__file__)), 'patternModels', name)
-        self.dataset = GraphDatasetHandler.load_data(name, "pattern")
-        print("dataset info after loading ", len(self.dataset), self.dataset.level)
-        self.loader = DataLoader(self.dataset.data, batch_size=config['batch_size_pattern'], shuffle=True)
         
-        # Load max_dist from dataset or use default for backwards compatibility
-        if hasattr(self.dataset, 'max_dist') and self.dataset.max_dist is not None:
-            self.max_dist = self.dataset.max_dist
-            print(f"Loaded max_dist from dataset: {self.max_dist}")
+
+
+        self.template_data = GraphDatasetHandler.load_data(name, "pattern")
+        print("template_data", self.template_data)
+        if isinstance(self.template_data, dict) and 'max_dist' in self.template_data and self.template_data['max_dist'] is not None:
+            self.max_dist = self.template_data['max_dist']
+            print(f"Loaded max_dist from template: {self.max_dist}")
         else:
             self.max_dist = 150  # Default fallback for old datasets
             print(f"WARNING: max_dist not found in dataset, using default: {self.max_dist}")
         
-        self.in_channels = self.out_channels = self.dataset.num_features
-        self.hidden_channels = self.dataset.num_features*2
+        
 
 
         #out_channels hab ich mal verdoppelt
         self.name = name
 
-        self.model = PatternEncoder(in_channels=self.in_channels, hidden_channels=self.hidden_channels, num_layers=1, out_channels=self.out_channels)
+
+
+
+        # 
 
         
 
-        self.epochs = 100000 #100000
+        # self.epochs = 100000 #100000
 
-        self.model = self.model.to(device)
+        # self.model = self.model.to(device)
         if osp.exists(self.model_path):
             print("PATTERNMODEL EXISTS. LOADING...", self.model_path)
             checkpoint = torch.load(self.model_path, map_location=torch.device('cpu'), weights_only=False)
-            # Handle both old format (just state dict) and new format (dict with state_dict and max_dist)
-            if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-                self.model.load_state_dict(checkpoint['state_dict'])
-                if 'max_dist' in checkpoint:
-                    self.max_dist = checkpoint['max_dist']
-                    print(f"Loaded max_dist from model checkpoint: {self.max_dist}")
-            else:
-                # Old format - just the state dict
-                self.model.load_state_dict(checkpoint)
-                print("Loaded model in old format (no max_dist in checkpoint)")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
-        self.scheduler = None
+            print("checkpoint", checkpoint)
+            self.in_channels = checkpoint['in_channels']
+            self.out_channels = checkpoint['out_channels']
+            self.hidden_channels = checkpoint['hidden_channels']
 
-        
+            self.template_data = GraphDatasetHandler.load_data(name, "pattern")
+            self.model = PatternEncoder(in_channels=self.in_channels, hidden_channels=self.hidden_channels, num_layers=1, out_channels=self.out_channels)
+            self.model.load_state_dict(checkpoint['state_dict'])
+            
+            self.max_dist = checkpoint['max_dist']
+            self.epoch = checkpoint['epoch']
+
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+            # Add ReduceLROnPlateau scheduler when loading existing model
+            self.scheduler = ReduceLROnPlateau(
+                self.optimizer,
+                mode='min',           # Minimize the loss
+                factor=0.5,           # Reduce LR by 50% when plateau detected
+                patience=10,          # Wait 10 epochs before reducing
+                min_lr=1e-6,          # Don't go below this learning rate
+                threshold=0.0001,     # Threshold for measuring improvement
+                threshold_mode='rel'  # Relative threshold
+            )
+            self.validation_sample = None  # Initialize validation sample
+        else:
+
+            print("PATTERNMODEL DOES NOT EXIST. Please initialize via test sample.")
 
 
 
         #for train_data in self.dataset:
         #    print(train_data)
 
-
-    def get_noisy_target_point(self, data, noise_scale):
-        """
-        Generate noisy target points that remain closer to the original target than to any dropped-out node.
-        
-        Args:
-            data: PyTorch Geometric Data object (batched or unbatched)
-            noise_scale: Scale factor for noise generation
-            
-        Returns:
-            noisy_targets: Normalized target points with noise (same shape as input)
-        """
-        # Handle both batched and unbatched cases
-        # target_point is stored as [1, 2] in data, so PyG batches it correctly
-        target_point = data.target_point
-        
-        # With [1, 2] storage: PyG stacks to [batch_size, 2]
-        if target_point.dim() == 2:
-            batch_size = target_point.size(0)
+    def setup_from_test_sample(self, sample):
+        if isinstance(sample, list):
+            test_sample = sample[0]
         else:
-            raise ValueError(f"Unexpected target_point shape: {target_point.shape}. Expected [batch_size, 2]")
-        
-        # Convert line_positions to tensor once
-        line_positions_tensor = torch.stack([torch.tensor([line['x'], line['y']], dtype=torch.float) for line in self.dataset.line_positions])
-        
-        noisy_targets_list = []
-        
-        for i in range(batch_size):
-            # Get center point - handle different batching formats
-            if isinstance(data.center_point, dict):
-                # Check if dict values are tensors (PyTorch Geometric batched format)
-                if torch.is_tensor(data.center_point['x']):
-                    # Batched: dict with tensor values
-                    center = torch.stack([data.center_point['x'][i], data.center_point['y'][i]])
-                else:
-                    # Unbatched: dict with scalar values
-                    center = torch.tensor([data.center_point['x'], data.center_point['y']], dtype=torch.float)
-            else:
-                # List of dicts (manual batching)
-                center = torch.tensor([data.center_point[i]['x'], data.center_point[i]['y']], dtype=torch.float)
-            
-            # Calculate absolute target position
-            total_target = target_point[i] * self.max_dist + center
-            
-            # Get dropped-out IDs - handle both single list and list of lists
-            dropped_out_ids = []
-            if hasattr(data, 'dropped_out_ids') and data.dropped_out_ids is not None:
-                try:
-                    if isinstance(data.dropped_out_ids, list):
-                        if len(data.dropped_out_ids) > 0 and isinstance(data.dropped_out_ids[0], list):
-                            # Batched case: list of lists
-                            if i < len(data.dropped_out_ids):
-                                dropped_out_ids = data.dropped_out_ids[i]
-                        elif batch_size == 1:
-                            # Single unbatched case: just a list
-                            dropped_out_ids = data.dropped_out_ids
-                        # else: batched but not list of lists - can't access per-sample, skip validation
-                except (IndexError, TypeError):
-                    # If we can't access dropped_out_ids properly, skip validation
-                    pass
-            
-            # Generate noisy target with validation
-            if not dropped_out_ids or len(dropped_out_ids) == 0:
-                noisy_target = total_target + torch.randn_like(total_target) * (noise_scale * self.max_dist)
-            else:
-                dropped_out_positions = line_positions_tensor[dropped_out_ids]
-                noisy_target = total_target + torch.randn_like(total_target) * (noise_scale * self.max_dist)
-                
-                # Validate and correct
-                max_iterations = 100
-                for iteration in range(max_iterations):
-                    distance_to_original = torch.norm(noisy_target - total_target)
-                    distances_to_dropped = torch.cdist(noisy_target.unsqueeze(0), dropped_out_positions)
-                    min_distance_to_dropped = distances_to_dropped.min()
-                    
-                    if distance_to_original < min_distance_to_dropped:
-                        break
-                    
-                    correction_factor = 0.3 if iteration < 50 else 0.5
-                    noisy_target = total_target + (noisy_target - total_target) * (1 - correction_factor)
-                else:
-                    # Max iterations reached
-                    print(f"Warning: Max iterations reached. Using minimal noise.")
-                    noisy_target = total_target + torch.randn_like(total_target) * (noise_scale * self.max_dist * 0.05)
-            
-            # Normalize back
-            noisy_target_normalized = (noisy_target - center) / self.max_dist
-            noisy_targets_list.append(noisy_target_normalized)
-        
-        # Stack results and return as [batch_size, 2]
-        noisy_targets = torch.stack(noisy_targets_list, dim=0)
-        
-        return noisy_targets
+            test_sample = sample
+
+        self.in_channels = self.out_channels = test_sample.num_features
+        self.hidden_channels = test_sample.num_features*2
+        self.max_dist = test_sample.max_dist
+        self.epoch = 0
+        self.validation_sample = sample
+
+        self.model = PatternEncoder(self.in_channels, self.hidden_channels, 1, self.out_channels)
+        self.model = self.model.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+        # Add ReduceLROnPlateau scheduler from the start
+        self.scheduler = ReduceLROnPlateau(
+            self.optimizer,
+            mode='min',           # Minimize the loss
+            factor=0.5,           # Reduce LR by 50% when plateau detected
+            patience=10,          # Wait 10 epochs before reducing
+            min_lr=1e-6,          # Don't go below this learning rate
+            threshold=0.0001,     # Threshold for measuring improvement
+            threshold_mode='rel'  # Relative threshold
+        )
+
     
-    def trainModel(self, progress_callback=None):
+    def trainModel(self, dataset, data_jitter=0):
         self.model.train()
+        self.loader = DataLoader(dataset, batch_size=config['batch_size_pattern'], shuffle=True)
 
         loss_list = []
         avg_epoch_loss = 0
 
-        for epoch in range(self.epochs):
+       
 
-            running_loss = 0
-
-
-            #for train_data in self.dataset:
-            for train_data in self.loader:
-
-                noise_scale = max(0.0, min(0.3 * (epoch - 200) / 300, 0.3))
-
-                # Add small random noise to target positions during training
-                if noise_scale > 0:
-                    # Ramp up noise from 0 to 0.05 between epochs 300-800
-
-                    new_target_point = self.get_noisy_target_point(train_data, noise_scale)
-                    noise_x = torch.randn_like(train_data.x) * noise_scale/30 
-                    train_data.x = train_data.x + noise_x
-
-                else:
-                    new_target_point = train_data.target_point
+        running_loss = 0
 
 
-                
-                
+        #for train_data in self.dataset:
+        for idx, train_data in enumerate(self.loader):
 
-                out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch, target_pos=new_target_point)
-                
-
-                #loss = self.loss_pos(out, train_data.target_point)
-                loss = self.loss_function(out, train_data.y)
-
-                self.optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                self.optimizer.step()
-
-                running_loss += loss.item()
-               
-
-
-            #ToDo: num_graphs auch beim line training?
-            running_loss /= len(self.loader)
-            if epoch > 500:
-                if self.scheduler is None:
-                    self.scheduler = CyclicLR(self.optimizer, base_lr=0.0001, max_lr=0.001, step_size_up=30, mode='triangular2')
-                if epoch == 1000:
-                    self.scheduler = CyclicLR(self.optimizer, base_lr=0.00001, max_lr=0.0001, step_size_up=30, mode='triangular2')
-                self.scheduler.step()
-
-
-            print("Epoch:", epoch, "Loss:", running_loss, "sampler", len(self.loader), noise_scale, self.optimizer.param_groups[0]['lr'])
-            avg_epoch_loss += running_loss
-
-
-            if epoch % 50 == 0:
-                checkpoint = {
-                    'state_dict': self.model.state_dict(),
-                    'max_dist': self.max_dist
-                }
-                torch.save(checkpoint, self.model_path)
-                print("saving...", "Epoch:", epoch, "Loss:", avg_epoch_loss/100, "current loss:", running_loss)
-                avg_epoch_loss = 0
             
-            # Send visualization using first sample from last training batch
-            if progress_callback and train_data is not None:
-                # Extract first sample from batch using PyG's built-in method
-                data_list = train_data.to_data_list()
-                first_sample = data_list[0]
+            if data_jitter > 0:
+                train_data.x = train_data.x + torch.randn(train_data.x.size()) * data_jitter
                 
-                # Add the noisy target and prediction that were used/generated
-                first_sample.noisy_target_point = new_target_point[0].unsqueeze(0)
-                
-                # Reshape output to [batch_size, 7] to extract first sample's full prediction
-                out_reshaped = out.view(-1, 7)
-                first_sample.prediction = out_reshaped[0]
-                
-                progress_callback(first_sample, self)
 
+            out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch, target_pos=train_data.target_point)
+
+            #loss = self.loss_pos(out, train_data.target_point)
+            loss = self.loss_function(out, train_data.y)
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            self.optimizer.step()
+
+            running_loss += loss.item()
+            
+
+
+        #ToDo: num_graphs auch beim line training?
+        running_loss /= len(self.loader)
+        
+        # Evaluate validation loss and step scheduler based on it
+        if self.scheduler is not None:
+            val_loss = self.evaluate_validation()
+            if val_loss is not None:
+                self.scheduler.step(val_loss)
+                print("[VAL] Epoch:", self.epoch, "Train Loss:", running_loss, 
+                      "Val Loss:", val_loss, "sampler", len(self.loader), 
+                      self.optimizer.param_groups[0]['lr'], "data_jitter", data_jitter)
+            else:
+                # Fallback to training loss if no validation sample
+                self.scheduler.step(running_loss)
+                print("[FALLBACK] Epoch:", self.epoch, "Loss:", running_loss, "sampler", 
+                      len(self.loader), self.optimizer.param_groups[0]['lr'], "data_jitter", data_jitter)
+        else:
+            print("[NO SCHEDULER] Epoch:", self.epoch, "Loss:", running_loss, "sampler", 
+                  len(self.loader), self.optimizer.param_groups[0]['lr'], "data_jitter", data_jitter)
+       
+
+
+        if self.epoch % 10 == 0:
+            self.saveModel()
+            print("saving...", "Epoch:", self.epoch, "current loss:", running_loss)
+        
+
+        self.epoch += 1
+
+
+            
+
+    def evaluate_validation(self):
+        """Evaluate loss on validation dataset using batching"""
+        if not hasattr(self, 'validation_sample') or self.validation_sample is None:
+            return None
+        
+        self.model.eval()  # Set to evaluation mode
+        
+        # Create a DataLoader for the validation samples
+        val_loader = DataLoader(self.validation_sample, batch_size=config['batch_size_pattern'], shuffle=False)
+        
+        total_loss = 0
+        with torch.no_grad():  # Don't compute gradients
+            for val_data in val_loader:
+                out = self.model.forward(
+                    val_data.x, 
+                    val_data.edge_index, 
+                    val_data.batch,
+                    target_pos=val_data.target_point
+                )
+                loss = self.loss_function(out, val_data.y)
+                total_loss += loss.item()
+        
+        # Average loss across all batches
+        val_loss = total_loss / len(val_loader)
+        
+        return val_loss
+
+    def saveModel(self):
         checkpoint = {
             'state_dict': self.model.state_dict(),
-            'max_dist': self.max_dist
+            'max_dist': self.max_dist,
+            'epoch': self.epoch,
+            'in_channels': self.in_channels,
+            'hidden_channels': self.hidden_channels,
+            'out_channels': self.out_channels
         }
         torch.save(checkpoint, self.model_path)
 
@@ -938,7 +901,7 @@ class PatternTrainer():
         latent_loss = torch.nn.MSELoss()(pred_latent, gt_latent)
 
         
-        pos_weight = 1
+        pos_weight = 5
         scale_weight = 1  
         rot_weight = 1    
         latent_weight = 1
@@ -1020,6 +983,10 @@ class PatternTrainer():
     def predict(self, x, edge_index, pos):
         self.model.eval()
         return self.model.forward(x, edge_index, batch_vector=None, target_pos=pos)
+
+    def predict_from_sample(self, sample):
+        self.model.eval()
+        return self.model.forward(sample.x, sample.edge_index, batch_vector=None, target_pos=sample.target_point)
     
   
 
