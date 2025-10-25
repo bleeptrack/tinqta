@@ -640,12 +640,10 @@ class GraphHandler:
             # Default sampling pattern: current + 6 nearby positions
             sample_offsets = [
                 (0, 0),      # Current position
-                (10, 0),     # Right
-                (-10, 0),    # Left
-                (0, 10),     # Down
-                (0, -10),    # Up
-                (7, 7),      # Diagonal
-                (-7, -7),    # Opposite diagonal
+                (2, 0),     # Right
+                (-2, 0),    # Left
+                (0, 2),     # Down
+                (0, -2),    # Up
             ]
         
         predictions = []
@@ -687,20 +685,14 @@ class GraphHandler:
     def calculate_gen_step(self, use_combinations=True, adaption_rate=1):
         
         self.gen_step = []
-        diff_threshold = 0.9
-        max_dist = self.pattern_trainer.max_dist * 1.05 if self.pattern_trainer else 150
-
-        data_to_predict = []
+        diff_threshold = 0.1
+        max_dist = self.pattern_trainer.max_dist 
 
 
         if not hasattr(self, "ghost_lines"):
             self.ghost_lines = []
         
       
-        num_fixed = sum(1 for line in self.lines if getattr(line, 'is_fixed', False))
-        idx_fixed = [i for i in range(len(self.lines)) if not self.lines[i].is_fixed]
-        num_not_fixed = len(self.lines) - num_fixed
-
 
         for i in range(len(self.lines)):
 
@@ -710,14 +702,6 @@ class GraphHandler:
             if self.lines[i].is_fixed is False:
                 
 
-                #adapted_z = previous_line_z + self.lines[i].adaption_rate * (z - previous_line_z)
-
-                #print(len(self.lines))
-                
-                
-                self.lines[i].dropout = 0
-                if adaption_rate is not None:
-                    self.lines[i].adaption_rate = adaption_rate
 
                 
                 
@@ -728,100 +712,30 @@ class GraphHandler:
                 if data is None:
                     print("line out of reference reach")
                     continue
-
-                
-
-                
-
-                if not hasattr(self.lines[i], "used_ids"):
-                    self.lines[i].used_ids = data.used_ids
-                else:
-                    print("used ids", self.lines[i].used_ids)
                    
                 if self.lines[i].stopped: 
                         
                     self.ghost_lines.append(self.lines[i].clone())
                     continue
-                        
-                        
-                
-                #flexi_rate = (self.lines[i].adaption_rate/len(self.lines[i].used_ids))
-                flexi_rate = self.lines[i].adaption_rate
-                
-                # === GRADIENT DESCENT OPTIMIZATION (POSITION ONLY) ===
-                # Initialize optimized position and SGD optimizer on first iteration
-                if not hasattr(self.lines[i], "pos_optimizer"):
-                    # Get initial full latent from current line state
-                    initial_z = self.lines[i].get_pattern_z(
-                        center_position=data.center_point, 
-                        max_dist=max_dist
-                    ).clone().detach()
-                    
-                    # Extract and optimize ONLY position (first 2 components)
-                    self.lines[i].optimized_pos = initial_z[0:2].clone()
-                    self.lines[i].optimized_pos.requires_grad_(True)
-                    
-                    # Create SGD optimizer for position only (2D optimization)
-                    self.lines[i].pos_optimizer = torch.optim.SGD(
-                        [self.lines[i].optimized_pos], 
-                        lr=0.5,          # Can use higher LR for just 2D position
-                        momentum=0.9,    # High momentum for smooth convergence
-                        dampening=0.1    # Dampens oscillation
-                    )
+
                 
                 # Get target prediction from multi-position averaging
                 z_target = self.predict_with_multi_position_averaging(self.lines[i], max_dist)
-                
-                # Fallback to single prediction if averaging failed
                 if z_target is None:
-                    z_target = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                    print("no prediction found")
+                    continue
                 
-                # Compute loss: distance to target POSITION only (first 2 components)
-                loss = torch.nn.functional.mse_loss(
-                    self.lines[i].optimized_pos, 
-                    z_target[0:2].detach()
-                )
-                
-                # === DEBUG OUTPUT ===
-                with torch.no_grad():
-                    target_dist = torch.norm(z_target[0:2] - self.lines[i].optimized_pos).item()
-                    current_pos = self.lines[i].optimized_pos.detach().clone()
-                    target_pos = z_target[0:2].detach()
-                    print(f"Line {i}: Loss={loss.item():.4f}, TargetDist={target_dist:.4f}, " +
-                          f"Current=({current_pos[0]:.2f},{current_pos[1]:.2f}), " +
-                          f"Target=({target_pos[0]:.2f},{target_pos[1]:.2f})")
-                # === END DEBUG ===
-                
-                # Gradient descent step on position
-                self.lines[i].pos_optimizer.zero_grad()
-                loss.backward()
-                self.lines[i].pos_optimizer.step()
-                
-                # Reconstruct full latent: optimized position + fresh other components
-                adapted_z = torch.cat([
-                    self.lines[i].optimized_pos.detach(),
-                    z_target[2:].detach()  # Use fresh rotation/scale/latent from prediction
-                ], dim=0)
-                # === END GRADIENT DESCENT ===
+                #z_target = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
 
-                data_to_predict.append(data)
-                        
-                    
-                    
-                line = self.decompose_node(adapted_z)
+                next_z = z_target * adaption_rate + self.lines[i].get_pattern_z(latent_name=self.pattern_trainer.name, center_position=data.center_point, max_dist=max_dist) * (1 - adaption_rate)
+                 
+                line = self.decompose_node(next_z)
                 line.update_position_from_reference(data.center_point, max_dist=max_dist)
 
-                # Apply momentum-based smoothing to prevent oscillation
-                #line = self.apply_momentum_to_line(self.lines[i], line, diff_threshold)
-
-                line.used_ids = data.used_ids
-                line.adaption_rate = flexi_rate
+                
                 line.is_fixed = False
                 line.stopped = False
                 
-                # Carry optimizer state forward to next iteration
-                line.optimized_pos = self.lines[i].optimized_pos
-                line.pos_optimizer = self.lines[i].pos_optimizer
                
                 
                 print("pos diff reached:", self.lines[i].pos_diff(line))
@@ -830,40 +744,7 @@ class GraphHandler:
                     print("line stopped")
                     line.stopped = True
                 else:
-                    line.stopped = False
-
-                # if not hasattr(self.lines[i], "history"):
-                #     self.lines[i].history = []
-                #     self.lines[i].last_history = []
-                #     self.lines[i].wiggle_count = 0
-                # self.lines[i].history.append(line.used_ids)
-                # if len(self.lines[i].history) > 50:
-                #     self.lines[i].history.pop(0)
-                # line.history = self.lines[i].history
-                # line.last_history = self.lines[i].last_history
-                # line.wiggle_count = self.lines[i].wiggle_count
-
-                # if len(line.history) > 1 and line.history[-1] != line.history[-2]:
-                #     count1 = line.history.count(line.history[-1])
-                #     count2 = line.history.count(line.history[-2])
-                #     unique_elements = len([list(x) for x in set(tuple(l) for l in line.history)])
-                #     #print("history", unique_elements, "count of last:", count1, count2, line.last_history)
-                #     if len(line.last_history) > 0:
-                #         wiggle_diff = (line.last_history[0]-count2 + line.last_history[1]-count1)
-                #         #print("wiggle diff", wiggle_diff)
-                #         if wiggle_diff < 2:
-                #             line.wiggle_count += 1
-                #             #print("WIGGLE DETECTED", line.wiggle_count)
-                #             line.adaption_rate *= 0.9
-                #             if line.wiggle_count > 20:
-                #                 #print("WIGGLE STOP")
-                #                 line.stopped = False
-                #                 #print("adding wiggle line to ghost lines")
-                #                 #self.ghost_lines.append(line)
-                #                 continue
-                #             #line.stopped = True
-                #     line.last_history = [count1, count2]
-                    
+                    line.stopped = False  
 
                 self.gen_step.append(line)
             else:
@@ -1150,6 +1031,27 @@ class GraphHandler:
         
         return torch.cat( (torch.tensor( [delta_posX, delta_posY, rot, scale], dtype=torch.float), lat_vec), 0)
 
+    @staticmethod
+    def _has_nearby_lines(lines, ground_truth_id, kept_ids, max_dist):
+        """
+        Check if the ground truth line has other lines within max_dist reach.
+        
+        Args:
+            lines: List of Line objects
+            ground_truth_id: ID of the ground truth line
+            kept_ids: Tensor of kept line IDs to check against
+            max_dist: Maximum distance threshold
+            
+        Returns:
+            bool: True if at least one kept line is within max_dist of ground truth
+        """
+        ground_truth_line = lines[ground_truth_id]
+        for kept_id in kept_ids:
+            other_line = lines[kept_id.item()]
+            dist = ground_truth_line.pos_diff(other_line)
+            if dist < max_dist:
+                return True
+        return False
 
     
     # def sample_graph(self, pred_id, latent_name=None, max_dist=None, include_pred_id=False, with_combinations=False, node_dropout=0.0):
@@ -1253,8 +1155,10 @@ class GraphHandler:
         dataset = []
         for line in self.lines:
             sample_data = self.sample_pattern_from_position(line.position, latent_name=self.pattern_trainer.name, max_dist=self.pattern_trainer.max_dist, ref_pos_as_ground_truth=True)
-            dataset.extend(sample_data)
+            if sample_data is not None:
+                dataset.extend(sample_data)
         print("Generated base dataset with", len(dataset), "samples")
+
         return dataset
 
     def calculate_dataset_onthefly(self, nr_samples=config['dataset_size_pattern'], noise_level=1, inference=False):
@@ -1354,6 +1258,14 @@ class GraphHandler:
         ground_truth_id = sorted_indices[ground_truth_idx].item()
         ground_truth_distance = sorted_distances[ground_truth_idx].item()
         
+        # Check that the ground truth has other lines within max_dist reach
+        # otherwise the prediction process will drift out of reach
+        # Exclude ground truth from the list of candidate lines to check
+        candidate_indices = sorted_indices[sorted_indices != ground_truth_id]
+        if not GraphHandler._has_nearby_lines(lines, ground_truth_id, candidate_indices, max_dist):
+            #print("no nearby lines for ground truth in initial check")
+            return None
+        
         # Remove ground truth from the candidate list
         remaining_indices = torch.cat([sorted_indices[:ground_truth_idx], sorted_indices[ground_truth_idx+1:]])
         remaining_distances = torch.cat([sorted_distances[:ground_truth_idx], sorted_distances[ground_truth_idx+1:]])
@@ -1383,6 +1295,11 @@ class GraphHandler:
                     
                     # Convert kept_ids to tensor for _create_pattern_graph
                     kept_ids_tensor = torch.tensor(kept_ids)
+                    
+                    # Verify ground truth still has nearby lines for this combination
+                    if not GraphHandler._has_nearby_lines(lines, ground_truth_id, kept_ids_tensor, max_dist):
+                        #print("no nearby lines for ground truth in combination check")
+                        continue  # Skip this combination
                     
                     # Create pattern graph for this combination
                     data = GraphHandler._create_pattern_graph(
@@ -1417,6 +1334,11 @@ class GraphHandler:
                 return None
             
             kept_ids = torch.tensor(kept_ids)
+            
+            # Verify ground truth still has nearby lines after dropout
+            if not GraphHandler._has_nearby_lines(lines, ground_truth_id, kept_ids, max_dist):
+                #print("no nearby lines for ground truth after dropout")
+                return None
             
             # Pass remaining line IDs to create_pattern_graph with ground truth line ID
             # Pass the reference position as target_pos parameter

@@ -252,7 +252,7 @@ def new_pattern(data):
     data_jitter = 0
     dataset = base_dataset + noisy_dataset
 
-    for i in range(200):
+    for i in range(201):
         if count >= threshold:
             noisy_dataset = gh.calculate_dataset_onthefly(nr_samples=len(base_dataset))
             dataset = base_dataset + noisy_dataset
@@ -428,7 +428,7 @@ def generate_pattern(data):
                 count += 1
                 if count % 10 == 0:
                     print("loop count", count)
-                if count > 1500:
+                if count > 500:
                     toast("LOOP LIMIT reached")
                     gh.gen_step = []
                     break
