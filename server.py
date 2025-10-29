@@ -222,6 +222,44 @@ def prepare_sample_for_visualization(sample_data, lineTrainer, patternTrainer, p
 
     return info
 
+def calculate_base_deltas(pattern_trainer, base_dataset, num_samples=50):
+    """
+    Calculate position deltas for base dataset samples where target_pos == ground_truth.
+    Returns average and max delta norms.
+    """
+    from torch_geometric.loader import DataLoader
+    
+    # Limit to available samples
+    num_samples = min(num_samples, len(base_dataset))
+    
+    # Batch the samples
+    base_loader = DataLoader(base_dataset[0:num_samples], batch_size=num_samples, shuffle=False)
+    base_batch = next(iter(base_loader))
+    
+    # Get predictions
+    with torch.no_grad():
+        pred = pattern_trainer.model.forward(base_batch.x, base_batch.edge_index, base_batch.batch, target_pos=base_batch.target_point)
+        pred = pred.view(-1, 7)  # Reshape to [batch, 7]
+        pred_pos = pred[:, 0:2]  # Extract positions
+        
+        # Get target positions
+        target_pos = base_batch.target_point  # Already [batch, 2]
+        
+        # Calculate deltas
+        deltas = pred_pos - target_pos
+        delta_norms = torch.norm(deltas, dim=1)
+        
+        avg_delta = delta_norms.mean().item()
+        max_delta = delta_norms.max().item()
+        min_delta = delta_norms.min().item()
+        
+    return {
+        'avg': avg_delta,
+        'max': max_delta,
+        'min': min_delta,
+        'num_samples': num_samples
+    }
+
 @socketio.on('train pattern')
 def new_pattern(data):
     lineTrainer = LineTrainer(data['name'])
@@ -267,6 +305,11 @@ def new_pattern(data):
         count += 1
 
         prediction = pt.predict_from_sample(dataset[-1])
+        
+        # Calculate deltas on base dataset to monitor convergence
+        delta_stats = calculate_base_deltas(pt, base_dataset, num_samples=50)
+        print(f"[Epoch {i}] Base deltas - Avg: {delta_stats['avg']:.6f}, "
+              f"Max: {delta_stats['max']:.6f}, Min: {delta_stats['min']:.6f}")
 
         info = prepare_sample_for_visualization(dataset[-1], lineTrainer, pt, prediction=prediction)
         info["base_list"] = [line.to_JSON() for line in gh.lines]
@@ -399,17 +442,26 @@ def generate_pattern(data):
         gh.init_original(noise_level=0)
 
         #gh.random_fill()
+        
 
         info = {}
+        flow_data = gh.calculate_flow_grid(grid_resolution=50)
+        info["flow_data"] = flow_data
+        
         info["base_list"] = [line.to_JSON() for line in gh.lines]
 
         emit('prediction', info)
+        print("prediction emitted")
 
     else:
 
         gh.ghost_lines = []
+
+        
+
         for run in range(1):
             info = {}
+            #info["flow_data"] = flow_data
             info["initial"] = [line.to_JSON() for line in gh.lines]
             
             
@@ -446,6 +498,9 @@ def generate_pattern(data):
             gh.choose_ghost_lines()
             info["top_p"] = [line.to_JSON() for line in gh.ghost_lines]
             print("SERVER: after top_p", len(gh.ghost_lines), len(info["top_p"]))
+
+            
+            
             emit('prediction', info)
             #untouched_lines, not_matched, merged_lines = gh.combine_ghost_and_main_lines()
 
@@ -486,6 +541,10 @@ def generate_pattern(data):
             # gh.reject_abnormal_lines()
 
             #info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
+            flow_data = gh.calculate_flow_grid()
+            info["flow_data"] = flow_data
+            
+            print("prediction emitted")
             emit('prediction', info)
             
 

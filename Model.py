@@ -349,9 +349,12 @@ class PatternEncoder(torch.nn.Module):
 
         #pos = self.pos_conv(nodes_pos, edge_index).relu()
         #pos = self.readout(pos, batch_vector)
-        pos = self.pos_hidden1(torch.cat([target_pos, combined_readout], dim=-1)).relu()
-        pos = self.pos_hidden2(pos).relu()
-        pos = self.pos(pos)
+        pos_delta = self.pos_hidden1(torch.cat([target_pos, combined_readout], dim=-1)).relu()
+        pos_delta = self.pos_hidden2(pos_delta).relu()
+        pos_delta = self.pos(pos_delta)
+
+        # Instead of predicting absolute position, predict a correction
+        pos = target_pos + pos_delta  # Add delta to input position
 
         #update 3 closest points to corrected position
         x_face_updated, _ = self.arrange_face(initial_x, batch_vector, pos)
@@ -786,8 +789,8 @@ class PatternTrainer():
         for idx, train_data in enumerate(self.loader):
 
             
-            if data_jitter > 0:
-                train_data.x = train_data.x + torch.randn(train_data.x.size()) * data_jitter
+            #if data_jitter > 0:
+            #    train_data.x = train_data.x + torch.randn(train_data.x.size()) * data_jitter
                 
 
             out = self.model.forward(train_data.x, train_data.edge_index, train_data.batch, target_pos=train_data.target_point)
@@ -901,10 +904,10 @@ class PatternTrainer():
         latent_loss = torch.nn.MSELoss()(pred_latent, gt_latent)
 
         
-        pos_weight = 5
+        pos_weight = 20
         scale_weight = 1  
         rot_weight = 1    
-        latent_weight = 1
+        latent_weight = 0.1
 
         normalizer = pos_weight + scale_weight + rot_weight + latent_weight
 

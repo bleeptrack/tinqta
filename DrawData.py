@@ -682,10 +682,34 @@ class GraphHandler:
             print("Warning: All multi-position predictions failed")
             return None
 
-    def calculate_gen_step(self, use_combinations=True, adaption_rate=1):
+    def calculate_flow_grid(self, grid_resolution=10):
+        max_dist = self.pattern_trainer.max_dist
+        min_x = min([line.position['x'] for line in self.lines])
+        max_x = max([line.position['x'] for line in self.lines])
+        min_y = min([line.position['y'] for line in self.lines])
+        max_y = max([line.position['y'] for line in self.lines])
+
+        flow_data = []
+
+        for x in range(int(min_x-max_dist), int(max_x+max_dist), grid_resolution):
+            print("x", x)
+            for y in range(int(min_y-max_dist), int(max_y+max_dist), grid_resolution):
+                
+                data = self.sample_pattern_from_position({'x': x, 'y': y}, latent_name=self.pattern_trainer.name, max_dist=max_dist, inference=True)
+                if data is not None:
+                    z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                    line = self.decompose_node(z)
+                    line.update_position_from_reference(data.center_point, max_dist=max_dist)
+                    
+                    flow_data.append({'x': x, 'y': y, 'pred_x': line.position['x'], 'pred_y': line.position['y'], 'line': line.to_JSON()})
+
+        return flow_data
+
+
+    def calculate_gen_step(self, use_combinations=True, adaption_rate=0.1):
         
         self.gen_step = []
-        diff_threshold = 0.1
+        diff_threshold = 0.2
         max_dist = self.pattern_trainer.max_dist 
 
 
@@ -720,17 +744,31 @@ class GraphHandler:
 
                 
                 # Get target prediction from multi-position averaging
-                z_target = self.predict_with_multi_position_averaging(self.lines[i], max_dist)
-                if z_target is None:
-                    print("no prediction found")
-                    continue
+                #z_target = self.predict_with_multi_position_averaging(self.lines[i], max_dist)
+                #if z_target is None:
+                #    print("no prediction found")
+                #    continue
                 
-                #z_target = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                next_z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
 
-                next_z = z_target * adaption_rate + self.lines[i].get_pattern_z(latent_name=self.pattern_trainer.name, center_position=data.center_point, max_dist=max_dist) * (1 - adaption_rate)
+                #next_z = z_target * adaption_rate + self.lines[i].get_pattern_z(latent_name=self.pattern_trainer.name, center_position=data.center_point, max_dist=max_dist) * (1 - adaption_rate)
                  
                 line = self.decompose_node(next_z)
                 line.update_position_from_reference(data.center_point, max_dist=max_dist)
+
+                # APPLY EMA SMOOTHING HERE
+                #line = self.apply_momentum_to_line(self.lines[i], line, diff_threshold)
+                last_pos = self.lines[i].position
+                vec = [line.position['x'] - last_pos['x'], line.position['y'] - last_pos['y']]
+                vec_length = (vec[0]**2 + vec[1]**2)**0.5
+                if vec_length > 10:
+                    # Normalize the vector and scale it to length 10
+                    print("vec", vec, vec_length)
+                    vec[0] = (vec[0] / vec_length) * 10
+                    vec[1] = (vec[1] / vec_length) * 10
+                    line.position['x'] = last_pos['x'] + vec[0]
+                    line.position['y'] = last_pos['y'] + vec[1]
+                
 
                 
                 line.is_fixed = False

@@ -115,7 +115,30 @@ export class PatternTrainer extends HTMLElement {
 				l.strokeCap = "round"
 			}
 		}
-		
+		if(data["flow_data"]){
+			for(let pos of data["flow_data"]){
+				let c2 = new Path.Circle(pos["pred_x"], pos["pred_y"], 3)
+				c2.fillColor = "purple"
+				c2.opacity = 0.5
+
+
+				let vec = new Point(pos["pred_x"], pos["pred_y"]).subtract(new Point(pos["x"], pos["y"]))
+				if(vec.length > 10){
+					vec = vec.normalize().multiply(10)
+				}
+				let l = new Path.Line(pos["x"], pos["y"], pos["x"] + vec.x, pos["y"] + vec.y)
+				l.strokeColor = "blue"
+				l.opacity = 0.7
+				let c = new Path.Circle(pos["x"], pos["y"], 2)
+				c.fillColor = "blue"
+				console.log("drawing flow field at", pos["x"], pos["y"])
+
+
+				let line = this.canvas.drawLine(pos["line"], "black")
+				
+				
+			}
+		}
 		// Other visualizations used by generate pattern
 		if(data["ghost_lines"]){
 			for(let line of data["ghost_lines"]){
