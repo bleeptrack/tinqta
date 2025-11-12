@@ -192,33 +192,44 @@ def compare(data):
     emit('result', {'list': pointlist, "origins":originlist})
 
 
-def prepare_sample_for_visualization(sample_data, lineTrainer, patternTrainer, prediction=None):
-    
+def prepare_sample_for_visualization(sample_data_list, lineTrainer, patternTrainer, predictions=None, data_jitter=0):
     info = {}
-    sampled_lines = []
-    for i in range(sample_data.x.size()[0]):
-        line = GraphHandler.decompose_node_hidden_state(sample_data.x[i], lineTrainer)
-        line.update_position_from_reference(sample_data.center_point, sample_data.max_dist)
-        sampled_lines.append(line)
+    info["ground_truth"] = []
+    info["prediction"] = []
+    info["sample_nodes"] = []
+    info["dropped_out_nodes"] = []
+    info["target_pos"] = []
+    
+    for idx, sample_data in enumerate(sample_data_list):
+    
+        if data_jitter > 0:
+            sample_data.x = sample_data.x + torch.randn(sample_data.x.size()) * data_jitter
+        sampled_lines = []
 
-    ground_truth = GraphHandler.decompose_node_hidden_state(sample_data.y, lineTrainer)
-    ground_truth.update_position_from_reference(sample_data.center_point, sample_data.max_dist)
-    info["ground_truth"] = [ground_truth.to_JSON()]
+        for i in range(sample_data.x.size()[0]):
+            line = GraphHandler.decompose_node_hidden_state(sample_data.x[i], lineTrainer)
+            line.update_position_from_reference(sample_data.center_point, sample_data.max_dist)
+            sampled_lines.append(line)
 
-    dropped_out_nodes = []
-    for dropped_id in sample_data.dropped_out_ids:
-        line_pos = patternTrainer.template_data["lines"][dropped_id].position
-        dropped_out_nodes.append(line_pos)
+        ground_truth = GraphHandler.decompose_node_hidden_state(sample_data.y, lineTrainer)
+        ground_truth.update_position_from_reference(sample_data.center_point, sample_data.max_dist)
+        info["ground_truth"].append(ground_truth.to_JSON())
 
-    if prediction is not None:
-        prediction = GraphHandler.decompose_node_hidden_state(prediction, lineTrainer)
-        prediction.update_position_from_reference(sample_data.center_point, sample_data.max_dist)
-        info["prediction"] = [prediction.to_JSON()]
+        dropped_out_nodes = []
+        for dropped_id in sample_data.dropped_out_ids:
+            line_pos = patternTrainer.template_data["lines"][dropped_id].position
+            dropped_out_nodes.append(line_pos)
 
-    info["target_pos"] = GraphHandler.get_target_pos_from_sample_data(sample_data)
+        if predictions is not None:
+            prediction = predictions[idx]
+            prediction_line = GraphHandler.decompose_node_hidden_state(prediction, lineTrainer)
+            prediction_line.update_position_from_reference(sample_data.center_point, sample_data.max_dist)
+            info["prediction"].append(prediction_line.to_JSON())
 
-    info["sample_nodes"] = [line.to_JSON() for line in sampled_lines]
-    info["dropped_out_nodes"] = dropped_out_nodes
+        info["target_pos"].append(GraphHandler.get_target_pos_from_sample_data(sample_data))
+
+        info["sample_nodes"].extend([line.to_JSON() for line in sampled_lines])
+        info["dropped_out_nodes"].extend(dropped_out_nodes)
 
     return info
 
@@ -290,7 +301,7 @@ def new_pattern(data):
     data_jitter = 0
     dataset = base_dataset + noisy_dataset
 
-    for i in range(201):
+    for i in range(1001):
         if count >= threshold:
             noisy_dataset = gh.calculate_dataset_onthefly(nr_samples=len(base_dataset))
             dataset = base_dataset + noisy_dataset
@@ -300,18 +311,26 @@ def new_pattern(data):
                 threshold = 3
 
         if i > 25:
-            data_jitter = min(0.05, (i - 25) * 0.05 / 175)  # Ramp over 175 epochs
+            data_jitter = min(0.02, (i - 25) * 0.02 / 50)  # Ramp over 75 epochs
         pt.trainModel(dataset, data_jitter=data_jitter)
         count += 1
 
-        prediction = pt.predict_from_sample(dataset[-1])
-        
-        # Calculate deltas on base dataset to monitor convergence
-        delta_stats = calculate_base_deltas(pt, base_dataset, num_samples=50)
-        print(f"[Epoch {i}] Base deltas - Avg: {delta_stats['avg']:.6f}, "
-              f"Max: {delta_stats['max']:.6f}, Min: {delta_stats['min']:.6f}")
+         # Check if learning rate has reached minimum
+        current_lr = pt.optimizer.param_groups[0]['lr']
+        min_lr = pt.scheduler.min_lr if pt.scheduler is not None else 0
+        if current_lr <= min_lr:
+            print(f"Stopping training: Learning rate reached minimum ({current_lr})")
+            break
 
-        info = prepare_sample_for_visualization(dataset[-1], lineTrainer, pt, prediction=prediction)
+        visualize_dataset = gh.calculate_dataset_onthefly(nr_samples=3) + random.sample(base_dataset, 3)
+        
+
+        predictions = []
+        for sample_data in visualize_dataset:
+            prediction = pt.predict_from_sample(sample_data)
+            predictions.append(prediction)
+
+        info = prepare_sample_for_visualization(visualize_dataset, lineTrainer, pt, predictions=predictions, data_jitter=data_jitter)
         info["base_list"] = [line.to_JSON() for line in gh.lines]
 
         emit('prediction', info)
@@ -445,8 +464,8 @@ def generate_pattern(data):
         
 
         info = {}
-        flow_data = gh.calculate_flow_grid(grid_resolution=50)
-        info["flow_data"] = flow_data
+        #flow_data = gh.calculate_flow_grid(grid_resolution=50)
+        #info["flow_data"] = flow_data
         
         info["base_list"] = [line.to_JSON() for line in gh.lines]
 
@@ -480,7 +499,7 @@ def generate_pattern(data):
                 count += 1
                 if count % 10 == 0:
                     print("loop count", count)
-                if count > 500:
+                if count > 110:
                     toast("LOOP LIMIT reached")
                     gh.gen_step = []
                     break
@@ -541,8 +560,8 @@ def generate_pattern(data):
             # gh.reject_abnormal_lines()
 
             #info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
-            flow_data = gh.calculate_flow_grid()
-            info["flow_data"] = flow_data
+            #flow_data = gh.calculate_flow_grid()
+            #info["flow_data"] = flow_data
             
             print("prediction emitted")
             emit('prediction', info)

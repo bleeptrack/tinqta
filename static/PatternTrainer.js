@@ -103,9 +103,11 @@ export class PatternTrainer extends HTMLElement {
 			}
 		}
 		if(data["target_pos"]){
-			let c = new Path.Circle(data["target_pos"], 15)
-			c.fillColor = "green"
-			c.opacity = 0.5
+			for(let pos of data["target_pos"]){
+				let c = new Path.Circle(pos, 15)
+				c.fillColor = "green"
+				c.opacity = 0.5
+			}
 		}
 		if(data["ground_truth"]){
 			for(let line of data["ground_truth"]){

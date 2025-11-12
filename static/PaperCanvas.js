@@ -158,7 +158,7 @@ export class PaperCanvas extends HTMLElement {
 		paper.setup(canvas);
 
 		paper.project.activeLayer.name = "lines"
-		paper.project.view.zoom = 0.8
+		paper.project.view.zoom = 0.3
 
 		let bgLayer = new paper.Layer({name: "background"})
 		

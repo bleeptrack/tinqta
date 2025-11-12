@@ -380,17 +380,17 @@ class GraphHandler:
         max_dist = patternTrainer.max_dist
         distance = config['stroke_normalizing_size'] + max_dist*2
         #for i in range(3):
-        for i in range(1):
-            for j in range(1):
+        for i in range(2):
+            for j in range(2):
                 print("i", i, "j", j)
-                reference_pos = GraphHandler._get_random_sampling_position(patternTrainer.template_data["lines"], max_dist)
-                print("reference_pos", reference_pos)
                 data = None
                 while data is None:
+                    reference_pos = GraphHandler._get_random_sampling_position(patternTrainer.template_data["lines"], max_dist)
+                    print("reference_pos", reference_pos)
                     data = GraphHandler._sample_pattern_from_position(patternTrainer.template_data["lines"], reference_pos, latent_name=self.pattern_trainer.name, max_dist=max_dist)
                 print("data", data)
 
-                seed_position = {"x":i * distance, "y":j * distance}
+                seed_position = {"x":i * distance * 2, "y":j * distance * 2}
                 self.insert_lines_from_sample_data(data, seed_position)
 
      
@@ -644,6 +644,24 @@ class GraphHandler:
                 (-2, 0),    # Left
                 (0, 2),     # Down
                 (0, -2),    # Up
+                (1, 0),     # Right
+                (-1, 0),    # Left
+                (0, 1),     # Down
+                (0, -1),    # Up
+
+                (2, 2),     # Right
+                (-2, 2),    # Left
+                (2, -2),     # Down
+                (-2, -2),    # Up
+                (1, 1),     # Right
+                (-1, 1),    # Left
+                (1, -1),     # Down
+                (-1, -1),    # Up
+
+                (10, 0),     # Right
+                (-10, 0),    # Left
+                (0, 10),     # Down
+                (0, -10),    # Up
             ]
         
         predictions = []
@@ -723,7 +741,7 @@ class GraphHandler:
             if not hasattr(self.lines[i], "stopped"):
                 self.lines[i].stopped = False
             
-            if self.lines[i].is_fixed is False:
+            if self.lines[i].is_fixed is False and self.lines[i].stopped is False:
                 
 
 
@@ -744,45 +762,42 @@ class GraphHandler:
 
                 
                 # Get target prediction from multi-position averaging
-                #z_target = self.predict_with_multi_position_averaging(self.lines[i], max_dist)
-                #if z_target is None:
-                #    print("no prediction found")
-                #    continue
+                next_z = self.predict_with_multi_position_averaging(self.lines[i], max_dist)
+                if next_z is None:
+                    print("no prediction found")
+                    continue
                 
-                next_z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                #next_z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                #pred_line = self.decompose_node(next_z)
+                #pred_line.update_position_from_reference(data.center_point, max_dist=max_dist)
+                #self.ghost_lines.append(pred_line)
 
-                #next_z = z_target * adaption_rate + self.lines[i].get_pattern_z(latent_name=self.pattern_trainer.name, center_position=data.center_point, max_dist=max_dist) * (1 - adaption_rate)
+                old_z = self.lines[i].get_pattern_z(latent_name=self.pattern_trainer.name, center_position=data.center_point, max_dist=max_dist)
+                next_z = next_z * adaption_rate + old_z * (1 - adaption_rate)
                  
                 line = self.decompose_node(next_z)
                 line.update_position_from_reference(data.center_point, max_dist=max_dist)
 
-                # APPLY EMA SMOOTHING HERE
-                #line = self.apply_momentum_to_line(self.lines[i], line, diff_threshold)
-                last_pos = self.lines[i].position
-                vec = [line.position['x'] - last_pos['x'], line.position['y'] - last_pos['y']]
-                vec_length = (vec[0]**2 + vec[1]**2)**0.5
-                if vec_length > 10:
-                    # Normalize the vector and scale it to length 10
-                    print("vec", vec, vec_length)
-                    vec[0] = (vec[0] / vec_length) * 10
-                    vec[1] = (vec[1] / vec_length) * 10
-                    line.position['x'] = last_pos['x'] + vec[0]
-                    line.position['y'] = last_pos['y'] + vec[1]
+                diff = torch.sum(torch.abs(next_z - old_z))
+
+                
                 
 
                 
                 line.is_fixed = False
                 line.stopped = False
+
+                if diff < 0.01:
+                    line.stopped = True
+                    self.lines[i].stopped = True
+                    print("line stopped at diff", diff)
+                    self.ghost_lines.append(line)
+                    continue
+
                 
                
                 
-                print("pos diff reached:", self.lines[i].pos_diff(line))
-                if self.lines[i].pos_diff(line) < diff_threshold:
-                    
-                    print("line stopped")
-                    line.stopped = True
-                else:
-                    line.stopped = False  
+                 
 
                 self.gen_step.append(line)
             else:
@@ -874,12 +889,13 @@ class GraphHandler:
 
             for i in range(1):
                 # Calculate the actual position with random offset
-                pos = {'x': line.position['x'] + random.randint(-max_dist, max_dist), 'y': line.position['y'] + random.randint(-max_dist, max_dist)}
+                if random.random() < 0.8:
+                    pos = {'x': line.position['x'] + random.randint(-max_dist, max_dist), 'y': line.position['y'] + random.randint(-max_dist, max_dist)}
 
-                z = self.line_trainer.randomInitPoint()
-                line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-                line.update_position_from_reference(pos, max_dist=max_dist)
-                self.lines.append(line)
+                    z = self.line_trainer.randomInitPoint()
+                    line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
+                    line.update_position_from_reference(pos, max_dist=max_dist)
+                    self.lines.append(line)
 
                   
         #self.ghost_lines = []
