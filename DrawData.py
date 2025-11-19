@@ -378,10 +378,10 @@ class GraphHandler:
             patternTrainer = self.pattern_trainer
 
         max_dist = patternTrainer.max_dist
-        distance = config['stroke_normalizing_size'] + max_dist*2
+        distance = max_dist*2.05
         #for i in range(3):
-        for i in range(2):
-            for j in range(2):
+        for i in range(3):
+            for j in range(3):
                 print("i", i, "j", j)
                 data = None
                 while data is None:
@@ -390,7 +390,7 @@ class GraphHandler:
                     data = GraphHandler._sample_pattern_from_position(patternTrainer.template_data["lines"], reference_pos, latent_name=self.pattern_trainer.name, max_dist=max_dist)
                 print("data", data)
 
-                seed_position = {"x":i * distance * 2, "y":j * distance * 2}
+                seed_position = {"x":i * distance , "y":j * distance }
                 self.insert_lines_from_sample_data(data, seed_position)
 
      
@@ -724,7 +724,7 @@ class GraphHandler:
         return flow_data
 
 
-    def calculate_gen_step(self, use_combinations=True, adaption_rate=0.1):
+    def calculate_gen_step(self, use_combinations=True, adaption_rate=0.1, average_predictions=False):
         
         self.gen_step = []
         diff_threshold = 0.2
@@ -741,7 +741,7 @@ class GraphHandler:
             if not hasattr(self.lines[i], "stopped"):
                 self.lines[i].stopped = False
             
-            if self.lines[i].is_fixed is False and self.lines[i].stopped is False:
+            if self.lines[i].is_fixed is False:
                 
 
 
@@ -756,18 +756,23 @@ class GraphHandler:
                     continue
                    
                 if self.lines[i].stopped: 
-                        
-                    self.ghost_lines.append(self.lines[i].clone())
+                    print("line cloned to ghost line")
+                    l = self.lines[i].clone()
+                    l.used_ids = data.used_ids
+                    self.ghost_lines.append(l)
                     continue
 
                 
                 # Get target prediction from multi-position averaging
-                next_z = self.predict_with_multi_position_averaging(self.lines[i], max_dist)
+                if average_predictions:
+                    next_z = self.predict_with_multi_position_averaging(self.lines[i], max_dist)
+                else:
+                    next_z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
                 if next_z is None:
                     print("no prediction found")
                     continue
                 
-                #next_z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                
                 #pred_line = self.decompose_node(next_z)
                 #pred_line.update_position_from_reference(data.center_point, max_dist=max_dist)
                 #self.ghost_lines.append(pred_line)
@@ -787,10 +792,11 @@ class GraphHandler:
                 line.is_fixed = False
                 line.stopped = False
 
-                if diff < 0.01:
+                if diff < 0.005:
                     line.stopped = True
                     self.lines[i].stopped = True
                     print("line stopped at diff", diff)
+                    line.used_ids = data.used_ids
                     self.ghost_lines.append(line)
                     continue
 
@@ -853,6 +859,38 @@ class GraphHandler:
         #print([line.averaged_from for line in self.lines])
         #self.lines = self.cluster_and_average(self.lines, func1=self.find_position_clusters, func2=self.find_latent_clusters, eps1=20, eps2=0.2, message="pos first")
         #print([line.averaged_from for line in self.lines])
+
+    def merge_lines_by_used_ids(self, max_dist=None):
+        if max_dist is None:
+            max_dist = self.pattern_trainer.max_dist
+
+        id_to_line = {}
+        for line in self.ghost_lines:
+            if not hasattr(line, 'used_ids') or line.used_ids is None:
+                raise ValueError(f"Line missing used_ids attribute. All ghost_lines must have used_ids set. Line: {line}")
+            
+            id_str = sorted(line.used_ids)
+            id_str = "".join([str(id) for id in id_str])
+            
+            if id_str not in id_to_line:
+                id_to_line[id_str] = []
+            id_to_line[id_str].append(line)
+
+        merged_lines = []
+        for id_str, lines in id_to_line.items():
+            averaged_latent = GraphHandler.average_latent_vectors(lines, lines[0].position, max_dist)
+            line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
+            line.update_position_from_reference(lines[0].position, max_dist=max_dist)
+            if any(line.is_fixed for line in lines):
+                line.is_fixed = True
+            line.averaged_from = len(lines)
+            line.cluster_label = id_str
+            # Preserve used_ids from the original lines (all lines in group have same used_ids)
+            line.used_ids = lines[0].used_ids
+            merged_lines.append(line)
+            
+        self.ghost_lines = merged_lines
+
     
     def choose_ghost_lines(self):
         #instead of latent first we could do a voronoi cell based clustering and see if the lines are close enough in space to belong together

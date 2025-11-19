@@ -56,7 +56,11 @@ export class PatternTrainer extends HTMLElement {
 		let baseLines = []
 		if(data["initial"]){
 			for(let line of data["initial"]){
-				let l = this.canvas.drawLine(line, "black", paper.project.layers["lines"])
+				let color = "black"
+				if(line["is_fixed"]){
+					color = "orange"
+				}
+				let l = this.canvas.drawLine(line, color, paper.project.layers["lines"])
 				l.strokeWidth = 20
 				l.opacity = 0.2
 				l.strokeCap = "round"

@@ -486,20 +486,20 @@ def generate_pattern(data):
             
 
             gh.reject_abnormal_lines()
-            gh.start_new_line()
+            #gh.start_new_line()
             
             
         
             
             count = 0
-            while gh.calculate_gen_step(use_combinations=False):
+            while gh.calculate_gen_step(use_combinations=False, average_predictions=count>150):
                 info["initial"] = [line.to_JSON() for line in gh.lines]
                 info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
                 
                 count += 1
                 if count % 10 == 0:
                     print("loop count", count)
-                if count > 110:
+                if count > 200:
                     toast("LOOP LIMIT reached")
                     gh.gen_step = []
                     break
@@ -512,8 +512,7 @@ def generate_pattern(data):
                 #socketio.sleep(2) 
                 
 
-            
-
+            #gh.merge_lines_by_used_ids()
             gh.choose_ghost_lines()
             info["top_p"] = [line.to_JSON() for line in gh.ghost_lines]
             print("SERVER: after top_p", len(gh.ghost_lines), len(info["top_p"]))
@@ -565,14 +564,65 @@ def generate_pattern(data):
             
             print("prediction emitted")
             emit('prediction', info)
-            
 
-            # for i in range(300):
-            #     print("DIFFUSING ROUND", i)
+            for diffusion_round in range(30):
+                info = {}
+
+                # Randomly select 10% of all lines
+                gh.ghost_lines = []
+                num_lines_to_select = max(1, int(len(gh.lines) * 0.05))
+                selected_lines = random.sample(gh.lines, min(num_lines_to_select, len(gh.lines)))
+                for line in selected_lines:
+                    line.stopped = False
+                    line.is_fixed = False
+
+                new_lines = random.sample([line for line in gh.lines if line.is_fixed], 1)
+                for l in new_lines:
+                    new_line = l.clone()
+                    new_line.position['x'] += random.randint(-100, 100)
+                    new_line.position['y'] += random.randint(-100, 100)
+                    new_line.stopped = False
+                    new_line.is_fixed = False
+                    gh.lines.append(new_line)
                 
-            #     gh.self_arrange()
-            #     info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
-            #     emit('prediction', info)
+                emit('prediction', info)
+
+                count = 0
+                while gh.calculate_gen_step(use_combinations=False, average_predictions=False):
+                    info["initial"] = [line.to_JSON() for line in gh.lines]
+                    info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
+                    
+                    count += 1
+                    if count % 10 == 0:
+                        print("diffuse loop count", count)
+                    if count > 200:
+                        toast("LOOP LIMIT reached")
+                        gh.gen_step = []
+                        break
+                    
+                    emit('prediction', info)
+                        
+
+                    
+                    gh.apply_gen_step()
+
+                
+                emit('prediction', info)
+
+                for line in gh.lines:
+                    if not line.is_fixed or not line.stopped:
+                        gh.lines.remove(line)
+                    
+                    
+
+                for line in gh.ghost_lines:
+                    line.stopped = True
+                    line.is_fixed = True
+
+                gh.lines.extend(gh.ghost_lines)
+                
+                print("prediction emitted")
+                emit('prediction', info)
             
 
             
