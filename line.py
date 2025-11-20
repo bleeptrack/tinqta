@@ -13,6 +13,7 @@ class Line():
         self.position_type = position_type
         self.latent_vectors = {}
         self.is_fixed = False
+        self.immutable = False
         #self.stopped = False
         self.dropout = 1
         self.adaption_rate = 1
@@ -163,6 +164,8 @@ class Line():
             line["used_ids"] = self.used_ids
         if hasattr(self, 'is_fixed'):
             line["is_fixed"] = self.is_fixed
+        if hasattr(self, 'immutable'):
+            line["immutable"] = self.immutable
         return line
     
     def clone(self):
@@ -187,6 +190,8 @@ class Line():
         # Copy any additional attributes that might exist
         if hasattr(self, 'used_ids'):
             cloned.used_ids = copy.deepcopy(self.used_ids)
+        if hasattr(self, 'immutable'):
+            cloned.immutable = self.immutable
             
         return cloned
     

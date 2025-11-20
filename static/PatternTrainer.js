@@ -60,6 +60,9 @@ export class PatternTrainer extends HTMLElement {
 				if(line["is_fixed"]){
 					color = "orange"
 				}
+				if(line["immutable"]){
+					color = "red"
+				}
 				let l = this.canvas.drawLine(line, color, paper.project.layers["lines"])
 				l.strokeWidth = 20
 				l.opacity = 0.2

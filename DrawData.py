@@ -10,6 +10,7 @@ import torch_geometric.transforms as T
 import random
 from sklearn.cluster import DBSCAN
 import numpy as np
+import math
 
 
 """ #Loads the dataset and handles delivery
@@ -387,7 +388,7 @@ class GraphHandler:
                 while data is None:
                     reference_pos = GraphHandler._get_random_sampling_position(patternTrainer.template_data["lines"], max_dist)
                     print("reference_pos", reference_pos)
-                    data = GraphHandler._sample_pattern_from_position(patternTrainer.template_data["lines"], reference_pos, latent_name=self.pattern_trainer.name, max_dist=max_dist)
+                    data = GraphHandler._sample_pattern_from_position(patternTrainer.template_data["lines"], reference_pos, latent_name=self.pattern_trainer.name, max_dist=max_dist, inference=True)
                 print("data", data)
 
                 seed_position = {"x":i * distance , "y":j * distance }
@@ -700,6 +701,61 @@ class GraphHandler:
             print("Warning: All multi-position predictions failed")
             return None
 
+    def test_dead_spot(self, line, max_dist):
+
+        sample_offsets = [
+            (10, 0),     # Right
+            (-10, 0),    # Left
+            (0, 10),     # Down
+            (0, -10),    # Up
+        ]
+        
+        predictions = []
+        
+        for dx, dy in sample_offsets:
+            test_pos = {
+                'x': line.position['x'] + dx,
+                'y': line.position['y'] + dy
+            }
+            
+            # Sample from this test position
+            test_data = self.sample_pattern_from_position(
+                test_pos,
+                latent_name=self.pattern_trainer.name,
+                max_dist=max_dist,
+                inference=True
+            )
+            
+            if test_data is not None:
+                # Get prediction from this position
+                z_pred = self.pattern_trainer.predict(
+                    test_data.x,
+                    test_data.edge_index,
+                    test_data.target_point
+                )
+                vector = z_pred[0:2]
+                
+                angle = math.atan2(vector[1], vector[0])
+                predictions.append(angle)
+        
+        # Average all valid predictions
+        if len(predictions) > 0:
+            # INSERT_YOUR_CODE
+            import numpy as np
+            # Normalize angles to [-pi, pi]
+            angles = np.array(predictions)
+            angles = np.mod(angles + np.pi, 2 * np.pi) - np.pi
+            # Circular variance: 1 - R (mean resultant length)
+            R = np.sqrt(np.mean(np.cos(angles)) ** 2 + np.mean(np.sin(angles)) ** 2)
+            circular_variance = 1 - R
+            print("Circular variance between dead spot angles:", circular_variance, predictions)
+            return circular_variance
+        else:
+            # Fallback: if all positions failed, return None
+            # Caller should handle this case
+            print("Warning: All multi-position predictions failed")
+            return None
+
     def calculate_flow_grid(self, grid_resolution=10):
         max_dist = self.pattern_trainer.max_dist
         min_x = min([line.position['x'] for line in self.lines])
@@ -738,8 +794,17 @@ class GraphHandler:
 
         for i in range(len(self.lines)):
 
+            if self.lines[i] is None:
+                self.gen_step.append(None)
+                continue
+
+
             if not hasattr(self.lines[i], "stopped"):
                 self.lines[i].stopped = False
+
+            if self.lines[i].stopped:
+                self.gen_step.append(self.lines[i].clone())
+                continue
             
             if self.lines[i].is_fixed is False:
                 
@@ -753,13 +818,15 @@ class GraphHandler:
                 
                 if data is None:
                     print("line out of reference reach")
+                    self.gen_step.append(None)
                     continue
                    
                 if self.lines[i].stopped: 
                     print("line cloned to ghost line")
                     l = self.lines[i].clone()
                     l.used_ids = data.used_ids
-                    self.ghost_lines.append(l)
+                    #self.ghost_lines.append(l)
+                    self.gen_step.append(l)
                     continue
 
                 
@@ -770,6 +837,7 @@ class GraphHandler:
                     next_z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
                 if next_z is None:
                     print("no prediction found")
+                    self.gen_step.append(None)
                     continue
                 
                 
@@ -782,6 +850,9 @@ class GraphHandler:
                  
                 line = self.decompose_node(next_z)
                 line.update_position_from_reference(data.center_point, max_dist=max_dist)
+                
+                # Preserve immutable attribute from original line
+                line.immutable = self.lines[i].immutable
 
                 diff = torch.sum(torch.abs(next_z - old_z))
 
@@ -792,12 +863,15 @@ class GraphHandler:
                 line.is_fixed = False
                 line.stopped = False
 
-                if diff < 0.005:
+                if diff < 0.02:
+                    self.test_dead_spot(line, max_dist)
+                    
                     line.stopped = True
                     self.lines[i].stopped = True
                     print("line stopped at diff", diff)
                     line.used_ids = data.used_ids
-                    self.ghost_lines.append(line)
+                    #self.ghost_lines.append(line)
+                    self.gen_step.append(line)
                     continue
 
                 
@@ -810,7 +884,7 @@ class GraphHandler:
                 self.gen_step.append(self.lines[i].clone())
 
        
-        if all(line.is_fixed for line in self.lines):
+        if all(line.is_fixed or line.stopped for line in [line for line in self.lines if line is not None]):
             print("ALL LINES FIXED")
             return False
            

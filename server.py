@@ -12,10 +12,22 @@ import random
 import numpy as np
 from pathlib import Path
 import torch
+import time
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app)
+# Configure Socket.IO with proper timeout settings to prevent connection drops
+# ping_timeout: how long to wait for pong response (in seconds)
+# ping_interval: how often to send ping (in seconds)
+# max_http_buffer_size: maximum size of messages (in bytes)
+socketio = SocketIO(
+    app,
+    ping_timeout=60,  # Increased from default 20 to handle long-running operations
+    ping_interval=25,  # Default ping interval
+    max_http_buffer_size=1e8,  # 100MB to handle large messages
+    cors_allowed_origins="*",
+    async_mode='threading'  # Use threading mode to prevent blocking
+)
 
 #create folders if they dont exist yet
 Path("./baseData").mkdir(exist_ok=True)
@@ -58,6 +70,16 @@ def connect():
     mlist = getModels()
     print(mlist)
     emit('models', mlist)
+
+@socketio.event
+def disconnect():
+    print("User disconnected")
+
+@socketio.on_error_default
+def default_error_handler(e):
+    print(f"Socket.IO error: {e}")
+    import traceback
+    traceback.print_exc()
 
 #@socketio.on('new line')
 #def new_line(points):
@@ -472,75 +494,78 @@ def generate_pattern(data):
         emit('prediction', info)
         print("prediction emitted")
 
+        for line in gh.lines:
+            if random.random() < 0.5:
+                line.immutable = True
+            else:
+                line.immutable = False
+
     else:
 
-        gh.ghost_lines = []
-
+       
         
-
-        for run in range(1):
+        # INSERT_YOUR_CODE
+        indices = [i for i, line in enumerate(gh.lines) if not getattr(line, "immutable", False)]
+        random.shuffle(indices)
+        for diff_idx in indices:
             info = {}
-            #info["flow_data"] = flow_data
-            info["initial"] = [line.to_JSON() for line in gh.lines]
-            
-            
 
-            gh.reject_abnormal_lines()
-            #gh.start_new_line()
+            # Randomly select 10% of all lines
+            gh.ghost_lines = []
+            backup_lines = [line.clone() for line in gh.lines]
+
+            #num_lines_to_select = max(1, int(len(gh.lines) * 0.01))
+            #selected_lines = random.sample(gh.lines, min(num_lines_to_select, len(gh.lines)))
+            
+            #ToDo: vermutlich verliere ich ne linie wenn sie rauslauft und dann stimmt der index nicht mehr
+            #die gleiche linie wird auch auf jeden fall mehrfach ausgewählt
+            print("gh.lines", len(gh.lines))
+            print("diffusing line", diff_idx)
+            gh.lines[diff_idx].stopped = False
+            gh.lines[diff_idx].is_fixed = False
+
             
             
-        
-            
+            #emit('prediction', info)
+
             count = 0
-            while gh.calculate_gen_step(use_combinations=False, average_predictions=count>150):
+
+            
+            
+            while gh.calculate_gen_step(use_combinations=False, average_predictions=False):
                 info["initial"] = [line.to_JSON() for line in gh.lines]
                 info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
                 
                 count += 1
                 if count % 10 == 0:
-                    print("loop count", count)
-                if count > 200:
+                    print("diffuse loop count", count)
+                if count > 180:
                     toast("LOOP LIMIT reached")
                     gh.gen_step = []
                     break
                 
-                emit('prediction', info)
+                if count % 20 == 0:
+                    emit('prediction', info)
                     
-
-                
+                    
                 gh.apply_gen_step()
-                #socketio.sleep(2) 
-                
 
-            #gh.merge_lines_by_used_ids()
-            gh.choose_ghost_lines()
-            info["top_p"] = [line.to_JSON() for line in gh.ghost_lines]
-            print("SERVER: after top_p", len(gh.ghost_lines), len(info["top_p"]))
-
-            
             
             emit('prediction', info)
-            #untouched_lines, not_matched, merged_lines = gh.combine_ghost_and_main_lines()
 
-            #not_matched.sort(key=lambda x: x.averaged_from)
-            #print([line.averaged_from for line in not_matched])
-
-            #die top auswahl müsste am ende eigentlich auf die nicht schon vorhandenen linien angewendet werden?
-            #not_matched = gh.top_p(not_matched, 1)
-            #print([line.averaged_from for line in not_matched])
-
-            
-            #gh.lines = not_matched  + merged_lines + untouched_lines
-            gh.lines = [line for line in gh.lines if line.is_fixed]
-            
-
-            #gh.reject_abnormal_lines()
-            #info["untouched_lines"] = [line.to_JSON() for line in untouched_lines]
-            #info["not_matched"] = [line.to_JSON() for line in not_matched]
-            #info["merged_lines"] = [line.to_JSON() for line in merged_lines]
-            #emit('prediction', info)
-
-
+            for idx, line in enumerate(gh.lines):
+                if line is None:
+                    print("line was None. restoring from backup", idx)
+                    gh.lines[idx] = backup_lines[idx]
+                    continue
+                if not line.is_fixed and not line.stopped:
+                    if idx < len(backup_lines):
+                        print("line not fixed or stopped. restoring from backup", idx)
+                        gh.lines[idx] = backup_lines[idx]
+                    else:
+                        print("line not found in backup. removing", idx)
+                        gh.lines.remove(line)
+                
             for line in gh.lines:
                 line.stopped = True
                 line.is_fixed = True
@@ -550,79 +575,9 @@ def generate_pattern(data):
                 line.is_fixed = True
 
             gh.lines.extend(gh.ghost_lines)
-
-            # for i in range(200):
-            #     gh.self_arrange()
-            #     info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
-            #     emit('prediction', info)
-
-            # gh.reject_abnormal_lines()
-
-            #info["diffused_lines"] = [line.to_JSON() for line in gh.lines]
-            #flow_data = gh.calculate_flow_grid()
-            #info["flow_data"] = flow_data
             
             print("prediction emitted")
             emit('prediction', info)
-
-            for diffusion_round in range(30):
-                info = {}
-
-                # Randomly select 10% of all lines
-                gh.ghost_lines = []
-                num_lines_to_select = max(1, int(len(gh.lines) * 0.05))
-                selected_lines = random.sample(gh.lines, min(num_lines_to_select, len(gh.lines)))
-                for line in selected_lines:
-                    line.stopped = False
-                    line.is_fixed = False
-
-                new_lines = random.sample([line for line in gh.lines if line.is_fixed], 1)
-                for l in new_lines:
-                    new_line = l.clone()
-                    new_line.position['x'] += random.randint(-100, 100)
-                    new_line.position['y'] += random.randint(-100, 100)
-                    new_line.stopped = False
-                    new_line.is_fixed = False
-                    gh.lines.append(new_line)
-                
-                emit('prediction', info)
-
-                count = 0
-                while gh.calculate_gen_step(use_combinations=False, average_predictions=False):
-                    info["initial"] = [line.to_JSON() for line in gh.lines]
-                    info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
-                    
-                    count += 1
-                    if count % 10 == 0:
-                        print("diffuse loop count", count)
-                    if count > 200:
-                        toast("LOOP LIMIT reached")
-                        gh.gen_step = []
-                        break
-                    
-                    emit('prediction', info)
-                        
-
-                    
-                    gh.apply_gen_step()
-
-                
-                emit('prediction', info)
-
-                for line in gh.lines:
-                    if not line.is_fixed or not line.stopped:
-                        gh.lines.remove(line)
-                    
-                    
-
-                for line in gh.ghost_lines:
-                    line.stopped = True
-                    line.is_fixed = True
-
-                gh.lines.extend(gh.ghost_lines)
-                
-                print("prediction emitted")
-                emit('prediction', info)
             
 
             
