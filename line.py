@@ -192,6 +192,8 @@ class Line():
             cloned.used_ids = copy.deepcopy(self.used_ids)
         if hasattr(self, 'immutable'):
             cloned.immutable = self.immutable
+        if hasattr(self, 'stop_count'):
+            cloned.stop_count = self.stop_count
             
         return cloned
     

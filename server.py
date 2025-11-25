@@ -52,6 +52,8 @@ for file in os.listdir(data_path):
 
 
 gh = GraphHandler()
+init_pattern = True
+line_deposit = []
 
 
 
@@ -472,7 +474,10 @@ def generate_pattern(data):
         
     emit('prediction', {'base_list': lines}) """
 
-    if(len(gh.lines) == 0):
+    global init_pattern, line_deposit
+
+    if(init_pattern):
+        init_pattern = False
         lineTrainer = LineTrainer(data['name'])
         pt = PatternTrainer(data['name'])
         gh.clear()
@@ -500,84 +505,154 @@ def generate_pattern(data):
             else:
                 line.immutable = False
 
+        # Remove all but one non-immutable line
+        non_immutable_lines = [line for line in gh.lines if not line.immutable]
+        line_deposit.extend(non_immutable_lines)
+        for line in non_immutable_lines:
+            gh.lines.remove(line)
+        
+        print("line_deposit", len(line_deposit))
+        
+
     else:
 
-       
-        
-        # INSERT_YOUR_CODE
-        indices = [i for i, line in enumerate(gh.lines) if not getattr(line, "immutable", False)]
-        random.shuffle(indices)
-        for diff_idx in indices:
-            info = {}
+        line_changed = False
+        change_count = 6
+        for j in range(1500):
 
-            # Randomly select 10% of all lines
-            gh.ghost_lines = []
-            backup_lines = [line.clone() for line in gh.lines]
+            if len(line_deposit) == 0:
+                gh.start_new_line()
+                
 
-            #num_lines_to_select = max(1, int(len(gh.lines) * 0.01))
-            #selected_lines = random.sample(gh.lines, min(num_lines_to_select, len(gh.lines)))
+            if change_count > 5 and len(line_deposit) > 0:
+                change_count = 0
+                print("line_deposit", len(line_deposit))
+                random.shuffle(line_deposit)
+                if len(line_deposit) > 3:
+                    # Keep the first one, remove the rest
+                    gh.lines.extend(line_deposit[0:1])
+                    for line in line_deposit[0:1]:
+                        line_deposit.remove(line)
+                else:
+                    for line in line_deposit:
+                        gh.lines.append(line)
+                    line_deposit = []
             
-            #ToDo: vermutlich verliere ich ne linie wenn sie rauslauft und dann stimmt der index nicht mehr
-            #die gleiche linie wird auch auf jeden fall mehrfach ausgewählt
-            print("gh.lines", len(gh.lines))
-            print("diffusing line", diff_idx)
-            gh.lines[diff_idx].stopped = False
-            gh.lines[diff_idx].is_fixed = False
-
-            
-            
-            #emit('prediction', info)
-
-            count = 0
-
-            
-            
-            while gh.calculate_gen_step(use_combinations=False, average_predictions=False):
+            # INSERT_YOUR_CODE
+            indices = [i for i, line in enumerate(gh.lines) if not getattr(line, "immutable", False)]
+            random.shuffle(indices)
+            for diff_idx in indices:
+                info = {}
+                # Initialize info with current state to prevent empty emits
                 info["initial"] = [line.to_JSON() for line in gh.lines]
+                info["ghost_lines"] = []
+
+                # Randomly select 10% of all lines
+                gh.ghost_lines = []
+                # Initialize stop_count before creating backup so it's preserved
+                for line in gh.lines:
+                    if not hasattr(line, "stop_count"):
+                        line.stop_count = 0
+                backup_lines = [line.clone() for line in gh.lines]
+
+                #num_lines_to_select = max(1, int(len(gh.lines) * 0.01))
+                #selected_lines = random.sample(gh.lines, min(num_lines_to_select, len(gh.lines)))
+                
+                #ToDo: vermutlich verliere ich ne linie wenn sie rauslauft und dann stimmt der index nicht mehr
+                #die gleiche linie wird auch auf jeden fall mehrfach ausgewählt
+                print("gh.lines", len(gh.lines))
+                print("diffusing line", diff_idx)
+                gh.lines[diff_idx].stopped = False
+                gh.lines[diff_idx].is_fixed = False
+
+                
+                
+                #emit('prediction', info)
+
+                count = 0
+
+                
+                
+                while gh.calculate_gen_step(use_combinations=False, average_predictions=False):
+                    info["initial"] = [line.to_JSON() for line in gh.lines]
+                    info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
+                    
+                    count += 1
+                    
+                    if count > 180:
+                        toast("LOOP LIMIT reached")
+                        gh.gen_step = []
+                        break
+                    
+                    if count % 20 == 0:
+                        emit('prediction', info)
+                        
+                        
+                    gh.apply_gen_step()
+
+                
+                # Update ghost_lines in case loop didn't execute
                 info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
-                
-                count += 1
-                if count % 10 == 0:
-                    print("diffuse loop count", count)
-                if count > 180:
-                    toast("LOOP LIMIT reached")
-                    gh.gen_step = []
-                    break
-                
-                if count % 20 == 0:
-                    emit('prediction', info)
-                    
-                    
-                gh.apply_gen_step()
+                emit('prediction', info)
 
-            
-            emit('prediction', info)
-
-            for idx, line in enumerate(gh.lines):
-                if line is None:
-                    print("line was None. restoring from backup", idx)
-                    gh.lines[idx] = backup_lines[idx]
-                    continue
-                if not line.is_fixed and not line.stopped:
-                    if idx < len(backup_lines):
-                        print("line not fixed or stopped. restoring from backup", idx)
+                for idx, line in enumerate(gh.lines):
+                    if line is None:
+                        print("line was None. restoring from backup", idx)
                         gh.lines[idx] = backup_lines[idx]
-                    else:
-                        print("line not found in backup. removing", idx)
-                        gh.lines.remove(line)
+                        continue
+                    if not line.is_fixed:
+                        if not line.stopped:
+                            if idx < len(backup_lines):
+                                print("line not fixed or stopped. restoring from backup", idx)
+                                
+                                # Preserve stop_count when restoring from backup
+                                if hasattr(line, "stop_count"):
+                                    backup_lines[idx].stop_count = line.stop_count
+                                gh.lines[idx] = backup_lines[idx]
+                            else:
+                                print("line not found in backup. removing", idx)
+                                gh.lines.remove(line)
+                        else:
+                            diff = line.pos_diff(backup_lines[idx])
+                            if not hasattr(line, "stop_count"):
+                                line.stop_count = 0
+                            
+                            print("line is stopped.", diff)
+                            if diff < 10:
+                                line.stop_count += 1
+                                if line.stop_count > 10:
+                                    print("line is close enough. making immutable", diff)
+                                    line.immutable = True
+                                
+
+
+                # Compare each line with its corresponding backup (matching indices only)
+                min_len = min(len(gh.lines), len(backup_lines))
+                accumulated_diff = [gh.lines[i].pos_diff(backup_lines[i]) for i in range(min_len)]
                 
-            for line in gh.lines:
-                line.stopped = True
-                line.is_fixed = True
+                if sum(accumulated_diff) < 0.1:
+                    print("lines are the same. no change.", sum(accumulated_diff))
+                    change_count += 1
+                    line_changed = False
+                else:
+                    change_count = 0
+                    line_changed = True
+               
+                
+                
+                    
+                for line in gh.lines:
+                    line.stopped = True
+                    line.is_fixed = True
 
-            for line in gh.ghost_lines:
-                line.stopped = True
-                line.is_fixed = True
+                for line in gh.ghost_lines:
+                    line.stopped = True
+                    line.is_fixed = True
 
-            gh.lines.extend(gh.ghost_lines)
-            
-            print("prediction emitted")
-            emit('prediction', info)
+                gh.lines.extend(gh.ghost_lines)
+                
+                info["initial"] = [line.to_JSON() for line in gh.lines]
+                emit('prediction', info)
             
 
             

@@ -781,6 +781,8 @@ class GraphHandler:
 
 
     def calculate_gen_step(self, use_combinations=True, adaption_rate=0.1, average_predictions=False):
+
+        exit_flag = False
         
         self.gen_step = []
         diff_threshold = 0.2
@@ -819,6 +821,7 @@ class GraphHandler:
                 if data is None:
                     print("line out of reference reach")
                     self.gen_step.append(None)
+                    exit_flag = True
                     continue
                    
                 if self.lines[i].stopped: 
@@ -863,8 +866,7 @@ class GraphHandler:
                 line.is_fixed = False
                 line.stopped = False
 
-                if diff < 0.02:
-                    self.test_dead_spot(line, max_dist)
+                if diff < 0.05:
                     
                     line.stopped = True
                     self.lines[i].stopped = True
@@ -883,6 +885,9 @@ class GraphHandler:
             else:
                 self.gen_step.append(self.lines[i].clone())
 
+        if exit_flag:
+            print("exit flag set")
+            return False
        
         if all(line.is_fixed or line.stopped for line in [line for line in self.lines if line is not None]):
             print("ALL LINES FIXED")
@@ -995,19 +1000,16 @@ class GraphHandler:
         
         max_dist = round(self.pattern_trainer.max_dist if self.pattern_trainer else 150)
         
-        for line in self.lines:
-            if not line.is_fixed:
-                continue
+        line = random.choice([line for line in self.lines if not line.is_fixed or not None])
+                
+        pos = {'x': line.position['x'] + random.randint(-max_dist, max_dist), 'y': line.position['y'] + random.randint(-max_dist, max_dist)}
 
-            for i in range(1):
-                # Calculate the actual position with random offset
-                if random.random() < 0.8:
-                    pos = {'x': line.position['x'] + random.randint(-max_dist, max_dist), 'y': line.position['y'] + random.randint(-max_dist, max_dist)}
-
-                    z = self.line_trainer.randomInitPoint()
-                    line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-                    line.update_position_from_reference(pos, max_dist=max_dist)
-                    self.lines.append(line)
+        z = self.line_trainer.randomInitPoint()
+        line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
+        line.update_position_from_reference(pos, max_dist=max_dist)
+        line.is_fixed = False
+        line.stopped = False
+        self.lines.append(line)
 
                   
         #self.ghost_lines = []
