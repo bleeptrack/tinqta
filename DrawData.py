@@ -379,17 +379,18 @@ class GraphHandler:
             patternTrainer = self.pattern_trainer
 
         max_dist = patternTrainer.max_dist
-        distance = max_dist*2.05
+        distance = max_dist*3.05
         #for i in range(3):
-        for i in range(3):
+        sample_distance = max_dist*2
+        for i in range(5):
             for j in range(3):
                 print("i", i, "j", j)
                 data = None
                 while data is None:
                     reference_pos = GraphHandler._get_random_sampling_position(patternTrainer.template_data["lines"], max_dist)
                     print("reference_pos", reference_pos)
-                    data = GraphHandler._sample_pattern_from_position(patternTrainer.template_data["lines"], reference_pos, latent_name=self.pattern_trainer.name, max_dist=max_dist, inference=True)
-                print("data", data)
+                    data = GraphHandler._sample_pattern_from_position(patternTrainer.template_data["lines"], reference_pos, latent_name=self.pattern_trainer.name, max_dist=sample_distance, inference=True)
+                print("data", data.x.shape)
 
                 seed_position = {"x":i * distance , "y":j * distance }
                 self.insert_lines_from_sample_data(data, seed_position)
@@ -866,7 +867,7 @@ class GraphHandler:
                 line.is_fixed = False
                 line.stopped = False
 
-                if diff < 0.05:
+                if diff < 0.01:
                     
                     line.stopped = True
                     self.lines[i].stopped = True
@@ -1096,9 +1097,15 @@ class GraphHandler:
         for z in sample_data.x:
             line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
             pos = seed_position if seed_position is not None else sample_data.center_point
+            distance = abs(line.position['x']**2 + line.position['y']**2)
+            print(line.position)
             line.update_position_from_reference(pos, max_dist=sample_data.max_dist)
             line.is_fixed = True
             line.stopped = True
+            print("distance", distance)
+            if distance < 0.5:
+                line.immutable = True
+
             self.lines.append(line)
 
     def create_pattern_graph(self, pred_id, ids, latent_name=None, max_dist=None, dropped_out_ids=None, target_pos=None):

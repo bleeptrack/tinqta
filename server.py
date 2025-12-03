@@ -493,23 +493,19 @@ def generate_pattern(data):
         info = {}
         #flow_data = gh.calculate_flow_grid(grid_resolution=50)
         #info["flow_data"] = flow_data
+        # Iterate backwards to avoid skipping elements when removing items
+        for i in range(len(gh.lines) - 1, -1, -1):
+            line = gh.lines[i]
+            if not line.immutable:
+                line_deposit.append(line)
+                gh.lines.pop(i)
         
-        info["base_list"] = [line.to_JSON() for line in gh.lines]
+        info["initial"] = [line.to_JSON() for line in gh.lines]
 
         emit('prediction', info)
         print("prediction emitted")
 
-        for line in gh.lines:
-            if random.random() < 0.5:
-                line.immutable = True
-            else:
-                line.immutable = False
-
-        # Remove all but one non-immutable line
-        non_immutable_lines = [line for line in gh.lines if not line.immutable]
-        line_deposit.extend(non_immutable_lines)
-        for line in non_immutable_lines:
-            gh.lines.remove(line)
+        
         
         print("line_deposit", len(line_deposit))
         
@@ -520,8 +516,7 @@ def generate_pattern(data):
         change_count = 6
         for j in range(1500):
 
-            if len(line_deposit) == 0:
-                gh.start_new_line()
+            
                 
 
             if change_count > 5 and len(line_deposit) > 0:
