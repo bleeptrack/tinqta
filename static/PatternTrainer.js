@@ -54,6 +54,20 @@ export class PatternTrainer extends HTMLElement {
 		
 		this.canvas.clear()
 		let baseLines = []
+		if(data["patch_data"]){
+			let x = data["patch_data"]["x"]
+			let y = data["patch_data"]["y"]
+			let patch_distance = data["patch_data"]["distance"]
+			let outsider_distance = data["patch_data"]["outsider_distance"]
+			for(let i = 0; i < x; i++){
+				for(let j = 0; j < y; j++){
+					let c = new Path.Rectangle(0, 0, outsider_distance*2, outsider_distance*2)
+					c.position = new Point(i * patch_distance, j * patch_distance)
+					c.fillColor = 'grey'
+					c.opacity = 0.5
+				}
+			}
+		}
 		if(data["initial"]){
 			for(let line of data["initial"]){
 				let color = "black"

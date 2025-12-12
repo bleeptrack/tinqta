@@ -166,6 +166,10 @@ class Line():
             line["is_fixed"] = self.is_fixed
         if hasattr(self, 'immutable'):
             line["immutable"] = self.immutable
+        if hasattr(self, 'outside_directions'):
+            line["outside_directions"] = self.outside_directions
+        if hasattr(self, 'patch_id'):
+            line["patch_id"] = self.patch_id
         return line
     
     def clone(self):

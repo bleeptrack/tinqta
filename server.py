@@ -474,7 +474,7 @@ def generate_pattern(data):
         
     emit('prediction', {'base_list': lines}) """
 
-    global init_pattern, line_deposit
+    global init_pattern, line_deposit, all_line_lists
 
     if(init_pattern):
         init_pattern = False
@@ -485,25 +485,60 @@ def generate_pattern(data):
         
         gh.calculate_original_lines()
         gh.calculate_line_thresholds()
-        gh.init_original(noise_level=0)
+        patch_data = gh.init_original(noise_level=0)
+        
 
         #gh.random_fill()
         
 
         info = {}
+        info["initial"] = [line.to_JSON() for line in gh.lines]
+        info["patch_data"] = patch_data
+        emit('prediction', info)
+        print("prediction emitted")
+
         #flow_data = gh.calculate_flow_grid(grid_resolution=50)
         #info["flow_data"] = flow_data
+
+        # INSERT_YOUR_CODE
+        from collections import defaultdict
+
+        # First, cluster by patch_id
+        patch_clusters = defaultdict(list)
+        for line in gh.lines:
+            if not line.immutable:
+                patch_id = getattr(line, "patch_id", None)
+                patch_clusters[patch_id].append(line)
+
+        # Now, within each patch_id, cluster by outside_directions
+        clustered = {}
+        for patch_id, lines in patch_clusters.items():
+            dir_clusters = defaultdict(list)
+            for line in lines:
+                direction = getattr(line, "outside_directions", None)
+                # Convert dict to hashable tuple if it's a dict
+                if isinstance(direction, dict):
+                    direction = tuple(sorted(direction.items()))
+                dir_clusters[direction].append(line)
+            clustered[patch_id] = dict(dir_clusters)
+
+        # Make a list of all the line lists so it's easier to iterate over
+        # Split each group into chunks of max length 3
+        
+        all_line_lists = []
+        for patch_id, dir_dict in clustered.items():
+            for direction, lines in dir_dict.items():
+                all_line_lists.append(lines)
+
         # Iterate backwards to avoid skipping elements when removing items
         for i in range(len(gh.lines) - 1, -1, -1):
             line = gh.lines[i]
             if not line.immutable:
-                line_deposit.append(line)
                 gh.lines.pop(i)
-        
-        info["initial"] = [line.to_JSON() for line in gh.lines]
 
-        emit('prediction', info)
-        print("prediction emitted")
+        line_deposit = all_line_lists.pop(0)
+        
+        
 
         
         
@@ -514,26 +549,31 @@ def generate_pattern(data):
 
         line_changed = False
         change_count = 6
+        loopcount = 0
         for j in range(1500):
 
-            
+            if loopcount > 15 or (len(all_line_lists) == 0 and loopcount > 5):
+                # Remove all lines from gh.lines that are not immutable
+                #all_line_lists.append([line for line in gh.lines if not getattr(line, "immutable", False)])
+                gh.lines = [line for line in gh.lines if getattr(line, "immutable", False)]
+                loopcount = 0
                 
 
-            if change_count > 5 and len(line_deposit) > 0:
-                change_count = 0
-                print("line_deposit", len(line_deposit))
-                random.shuffle(line_deposit)
-                if len(line_deposit) > 3:
-                    # Keep the first one, remove the rest
-                    gh.lines.extend(line_deposit[0:1])
-                    for line in line_deposit[0:1]:
-                        line_deposit.remove(line)
-                else:
-                    for line in line_deposit:
-                        gh.lines.append(line)
-                    line_deposit = []
             
-            # INSERT_YOUR_CODE
+            if ( all(line.immutable for line in gh.lines) or change_count > 5):
+                if len(all_line_lists) > 0:
+                    # Keep the first one, remove the rest
+                    change_count = 0
+                    loopcount = 0
+                    gh.lines.extend(all_line_lists.pop(0))
+                #else:
+                #    gh.start_new_line()
+
+            loopcount += 1
+                
+            
+            
+           
             indices = [i for i, line in enumerate(gh.lines) if not getattr(line, "immutable", False)]
             random.shuffle(indices)
             for diff_idx in indices:
@@ -574,7 +614,7 @@ def generate_pattern(data):
                     
                     count += 1
                     
-                    if count > 180:
+                    if count > 50:
                         toast("LOOP LIMIT reached")
                         gh.gen_step = []
                         break
@@ -601,9 +641,11 @@ def generate_pattern(data):
                                 print("line not fixed or stopped. restoring from backup", idx)
                                 
                                 # Preserve stop_count when restoring from backup
-                                if hasattr(line, "stop_count"):
-                                    backup_lines[idx].stop_count = line.stop_count
-                                gh.lines[idx] = backup_lines[idx]
+                                #if hasattr(line, "stop_count"):
+                                #    backup_lines[idx].stop_count = line.stop_count
+                                #gh.lines[idx] = backup_lines[idx]
+                                line.stopped = True
+                                line.is_fixed = True
                             else:
                                 print("line not found in backup. removing", idx)
                                 gh.lines.remove(line)
@@ -615,7 +657,7 @@ def generate_pattern(data):
                             print("line is stopped.", diff)
                             if diff < 10:
                                 line.stop_count += 1
-                                if line.stop_count > 10:
+                                if line.stop_count > 2:
                                     print("line is close enough. making immutable", diff)
                                     line.immutable = True
                                 

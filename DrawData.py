@@ -379,11 +379,16 @@ class GraphHandler:
             patternTrainer = self.pattern_trainer
 
         max_dist = patternTrainer.max_dist
-        distance = max_dist*3.05
+        distance = max_dist*4
         #for i in range(3):
-        sample_distance = max_dist*2
-        for i in range(5):
-            for j in range(3):
+        sample_distance = max_dist*4
+        min_coverage = 0.5
+        outsider_distance = sample_distance/3
+
+        max_x = 2
+        max_y = 2
+        for i in range(max_x):
+            for j in range(max_y):
                 print("i", i, "j", j)
                 data = None
                 while data is None:
@@ -392,8 +397,9 @@ class GraphHandler:
                     data = GraphHandler._sample_pattern_from_position(patternTrainer.template_data["lines"], reference_pos, latent_name=self.pattern_trainer.name, max_dist=sample_distance, inference=True)
                 print("data", data.x.shape)
 
-                seed_position = {"x":i * distance , "y":j * distance }
-                self.insert_lines_from_sample_data(data, seed_position)
+                self.insert_lines_from_sample_data(data, distance, x=i, y=j, outsider_distance=outsider_distance, min_coverage=min_coverage, patch_id=(i,j))
+
+        return {"x":max_x, "y":max_y, "distance":distance, "outsider_distance":outsider_distance}
 
      
       
@@ -867,7 +873,7 @@ class GraphHandler:
                 line.is_fixed = False
                 line.stopped = False
 
-                if diff < 0.01:
+                if diff < 0.05:
                     
                     line.stopped = True
                     self.lines[i].stopped = True
@@ -1093,20 +1099,67 @@ class GraphHandler:
 
 
 
-    def insert_lines_from_sample_data(self, sample_data, seed_position=None):
+    def insert_lines_from_sample_data(self, sample_data, distance, x=None, y=None, outsider_distance=None, min_coverage=0.5, patch_id=None):
         for z in sample_data.x:
             line = GraphHandler.decompose_node_hidden_state(z, self.line_trainer)
-            pos = seed_position if seed_position is not None else sample_data.center_point
-            distance = abs(line.position['x']**2 + line.position['y']**2)
-            print(line.position)
+            pos = {"x":x * distance, "y":y * distance}
             line.update_position_from_reference(pos, max_dist=sample_data.max_dist)
             line.is_fixed = True
             line.stopped = True
-            print("distance", distance)
-            if distance < 0.5:
-                line.immutable = True
+            line.immutable = True
+            line.patch_position = {"x":x, "y":y}
+         
+            outside_distance, eval_directions = self.are_line_points_outside_distance(line, pos, outsider_distance, min_coverage)
+            if outside_distance:
+                line.immutable = False
+                line.outside_directions = eval_directions
+                line.patch_id = patch_id
 
             self.lines.append(line)
+
+    def are_line_points_outside_distance(self, line, sample_center, distance, min_coverage):
+        len_points = len(line.points)
+        mc = min_coverage * len_points
+        right = 0
+        left = 0
+        top = 0
+        bottom = 0
+        
+        # Apply scale and rotation transformations to points
+        cos_r = math.cos(line.rotation * 2 * math.pi)
+        sin_r = math.sin(line.rotation * 2 * math.pi)
+        
+        for point in line.points:
+            # Apply scale
+            scaled_x = point['x'] * line.scale
+            scaled_y = point['y'] * line.scale
+            
+            # Apply rotation
+            rotated_x = scaled_x * cos_r - scaled_y * sin_r
+            rotated_y = scaled_x * sin_r + scaled_y * cos_r
+            
+            # Calculate absolute position
+            abs_x = rotated_x + line.position['x']
+            abs_y = rotated_y + line.position['y']
+            
+            # Check if outside the box (relative to sample_center)
+            rel_x = abs_x - sample_center['x']
+            rel_y = abs_y - sample_center['y']
+            
+            if rel_x > distance:
+                right += 1
+            if rel_x < -distance:
+                left += 1
+            if rel_y > distance:
+                bottom += 1
+            if rel_y < -distance:
+                top += 1
+        
+        eval_directions = {"right":right>mc, "left":left>mc, "top":top>mc, "bottom":bottom>mc}
+        accumulated_eval = right>mc or left>mc or top>mc or bottom>mc
+
+        print("eval_directions", eval_directions)
+        return accumulated_eval, eval_directions
 
     def create_pattern_graph(self, pred_id, ids, latent_name=None, max_dist=None, dropped_out_ids=None, target_pos=None):
         return GraphHandler._create_pattern_graph(self.lines, pred_id, ids, latent_name, max_dist, dropped_out_ids, target_pos)
