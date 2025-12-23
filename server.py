@@ -496,6 +496,7 @@ def generate_pattern(data):
         info["patch_data"] = patch_data
         emit('prediction', info)
         print("prediction emitted")
+       
 
         #flow_data = gh.calculate_flow_grid(grid_resolution=50)
         #info["flow_data"] = flow_data
@@ -528,7 +529,11 @@ def generate_pattern(data):
         all_line_lists = []
         for patch_id, dir_dict in clustered.items():
             for direction, lines in dir_dict.items():
+                # Append lines in chunks of 5
+                #for i in range(0, len(lines), 5):
+                #    all_line_lists.append(lines[i:i+5])
                 all_line_lists.append(lines)
+        all_line_lists.append([])
 
         # Iterate backwards to avoid skipping elements when removing items
         for i in range(len(gh.lines) - 1, -1, -1):
@@ -536,59 +541,120 @@ def generate_pattern(data):
             if not line.immutable:
                 gh.lines.pop(i)
 
-        line_deposit = all_line_lists.pop(0)
-        
-        
 
+
+        #gh.lines.extend(all_line_lists.pop(1))
         
-        
-        print("line_deposit", len(line_deposit))
+        #print("lines for happyness check", len([line for line in gh.lines if not getattr(line, "immutable", False)]))
+        #happyness_check(gh)
+                   
+        #info = {}
+        #info["initial"] = [line.to_JSON() for line in gh.lines]
+        #emit('prediction', info)
         
 
     else:
-
+        info = {}
         line_changed = False
         change_count = 6
         loopcount = 0
+
+        try_later = []
+
+
         for j in range(1500):
 
-            if loopcount > 15 or (len(all_line_lists) == 0 and loopcount > 5):
+            if loopcount > 7:
                 # Remove all lines from gh.lines that are not immutable
-                #all_line_lists.append([line for line in gh.lines if not getattr(line, "immutable", False)])
+                non_immutable = [line for line in gh.lines if not getattr(line, "immutable", False)]
+                for i in range(0, len(non_immutable), 5):
+                    try_later.append(non_immutable[i:i+5])
                 gh.lines = [line for line in gh.lines if getattr(line, "immutable", False)]
                 loopcount = 0
                 
 
             
-            if ( all(line.immutable for line in gh.lines) or change_count > 5):
+            if ( all(line.immutable for line in gh.lines if line != None) or change_count > 5):
                 if len(all_line_lists) > 0:
                     # Keep the first one, remove the rest
+
+
+                    #non_immutable_lines = [line for line in gh.lines if line != None and not line.immutable]
+                    #for i in range(0, len(non_immutable_lines), 5):
+                    #    try_later.append(non_immutable_lines[i:i+5])
+                    non_immutable = [line for line in gh.lines if not getattr(line, "immutable", False)]
+                    for i in range(0, len(non_immutable), 5):
+                        try_later.append(non_immutable[i:i+5])
+                    gh.lines = [line for line in gh.lines if line != None and line.immutable]
                     change_count = 0
                     loopcount = 0
                     gh.lines.extend(all_line_lists.pop(0))
-                #else:
-                #    gh.start_new_line()
+                    info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
+                    emit('prediction', info)
+                    
+
+                    #gh.accept_stationary_lines()
+                    #info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
+                    #info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
+                    #emit('prediction', info)
+                    #time.sleep(2)
+                    #gh.ghost_lines = []
+                    
+                    #time.sleep(2)
+                    #happyness_check(gh)
+                    
+                else:
+                    if len(try_later) > 0:
+
+                        #flow_data = gh.calculate_flow_grid()
+                        #info["flow_data"] = flow_data
+                        #emit('prediction', info)
+                        #exit()
+
+                        group = try_later.pop(0)
+                        
+                        gh.lines.extend([line.clone() for line in group])
+                        try_later.append(group)
+
+                        
+
+
+                    else:
+                        exit()
+                       
+                    
+                    #gh.start_new_line()
+
+            
+                
 
             loopcount += 1
+            print(f"\033[94mLOOP {loopcount}\033[0m")
                 
             
             
            
             indices = [i for i, line in enumerate(gh.lines) if not getattr(line, "immutable", False)]
-            random.shuffle(indices)
+            #random.shuffle(indices)
             for diff_idx in indices:
+                if gh.lines[diff_idx] is None:
+                    continue
+                
+                
                 info = {}
                 # Initialize info with current state to prevent empty emits
-                info["initial"] = [line.to_JSON() for line in gh.lines]
+                info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                 info["ghost_lines"] = []
 
                 # Randomly select 10% of all lines
                 gh.ghost_lines = []
                 # Initialize stop_count before creating backup so it's preserved
                 for line in gh.lines:
-                    if not hasattr(line, "stop_count"):
+                    if line != None and not hasattr(line, "stop_count"):
                         line.stop_count = 0
-                backup_lines = [line.clone() for line in gh.lines]
+
+                
+                backup_lines = [line.clone() if line != None else None for line in gh.lines]
 
                 #num_lines_to_select = max(1, int(len(gh.lines) * 0.01))
                 #selected_lines = random.sample(gh.lines, min(num_lines_to_select, len(gh.lines)))
@@ -609,7 +675,7 @@ def generate_pattern(data):
                 
                 
                 while gh.calculate_gen_step(use_combinations=False, average_predictions=False):
-                    info["initial"] = [line.to_JSON() for line in gh.lines]
+                    info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                     info["ghost_lines"] = [line.to_JSON() for line in gh.ghost_lines]
                     
                     count += 1
@@ -632,10 +698,15 @@ def generate_pattern(data):
 
                 for idx, line in enumerate(gh.lines):
                     if line is None:
-                        print("line was None. restoring from backup", idx)
-                        gh.lines[idx] = backup_lines[idx]
+                    #    print("line was None. restoring from backup", idx)
+                    #    gh.lines[idx] = backup_lines[idx]
                         continue
                     if not line.is_fixed:
+                        predictions = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist)
+                        print("predictions", predictions)
+                        info["ghost_lines"] = [line.to_JSON() for line in predictions]
+                        emit('prediction', info)
+                        
                         if not line.stopped:
                             if idx < len(backup_lines):
                                 print("line not fixed or stopped. restoring from backup", idx)
@@ -643,9 +714,11 @@ def generate_pattern(data):
                                 # Preserve stop_count when restoring from backup
                                 #if hasattr(line, "stop_count"):
                                 #    backup_lines[idx].stop_count = line.stop_count
-                                #gh.lines[idx] = backup_lines[idx]
-                                line.stopped = True
-                                line.is_fixed = True
+                                if len(all_line_lists) > 0:
+                                    gh.lines[idx] = backup_lines[idx]
+                                
+                                #line.stopped = True
+                                #line.is_fixed = True
                             else:
                                 print("line not found in backup. removing", idx)
                                 gh.lines.remove(line)
@@ -653,19 +726,31 @@ def generate_pattern(data):
                             diff = line.pos_diff(backup_lines[idx])
                             if not hasattr(line, "stop_count"):
                                 line.stop_count = 0
+
                             
                             print("line is stopped.", diff)
                             if diff < 10:
                                 line.stop_count += 1
-                                if line.stop_count > 2:
-                                    print("line is close enough. making immutable", diff)
+                                #if line.stop_count > 2:
+                                print("line is close enough. making immutable", diff)
+                                if len(all_line_lists) > 0:
                                     line.immutable = True
+                                    
+                                    
+                                elif line.stop_count > 2:
+                                    line.immutable = True
+                                    
+                                    
+                            else:
+                                if len(all_line_lists) > 0:
+                                    gh.lines[idx] = backup_lines[idx]
                                 
 
 
                 # Compare each line with its corresponding backup (matching indices only)
                 min_len = min(len(gh.lines), len(backup_lines))
-                accumulated_diff = [gh.lines[i].pos_diff(backup_lines[i]) for i in range(min_len)]
+                #accumulated_diff = [gh.lines[i].pos_diff(backup_lines[i]) for i in range(min_len)]
+                accumulated_diff = [line.pos_diff(backup_lines[idx]) for idx, line in enumerate(gh.lines) if line != None]
                 
                 if sum(accumulated_diff) < 0.1:
                     print("lines are the same. no change.", sum(accumulated_diff))
@@ -679,6 +764,8 @@ def generate_pattern(data):
                 
                     
                 for line in gh.lines:
+                    if line is None:
+                        continue
                     line.stopped = True
                     line.is_fixed = True
 
@@ -688,11 +775,38 @@ def generate_pattern(data):
 
                 gh.lines.extend(gh.ghost_lines)
                 
-                info["initial"] = [line.to_JSON() for line in gh.lines]
+                info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                 emit('prediction', info)
+                
             
 
-            
+def happyness_check(gh):
+
+    for line in gh.lines:
+        line.stopped = True
+        line.is_fixed = True
+
+    for idx in range(len(gh.lines)):
+        if not gh.lines[idx].immutable:
+            print("idx", idx)
+            tmp = gh.lines[idx].clone()
+            gh.lines[idx].stopped = False
+            gh.lines[idx].is_fixed = False
+            gh.calculate_gen_step(use_combinations=False, average_predictions=False, adaption_rate=1)
+            gh.apply_gen_step()
+            if gh.lines[idx] is None:
+                print("line was None.")
+                gh.lines[idx] = tmp
+                continue
+
+            print("pos_diff", gh.lines[idx].pos_diff(tmp))
+            if gh.lines[idx].pos_diff(tmp) < 20:
+                tmp.immutable = True
+
+            gh.lines[idx] = tmp
+            #else:
+                #gh.lines[idx] = tmp
+
 
 
 def toast(message):

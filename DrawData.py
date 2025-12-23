@@ -379,11 +379,11 @@ class GraphHandler:
             patternTrainer = self.pattern_trainer
 
         max_dist = patternTrainer.max_dist
-        distance = max_dist*4
+        distance = max_dist*3.5
         #for i in range(3):
         sample_distance = max_dist*4
         min_coverage = 0.5
-        outsider_distance = sample_distance/3
+        outsider_distance = sample_distance/3.5
 
         max_x = 2
         max_y = 2
@@ -562,7 +562,7 @@ class GraphHandler:
       
 
         count = 0
-        while self.calculate_gen_step(use_combinations=False, adaption_rate=1):
+        while self.calculate_gen_step(use_combinations=False, adaption_rate=0.01):
             count += 1
             if count > 1:
                 #print("LOOP LIMIT reached")
@@ -710,11 +710,11 @@ class GraphHandler:
 
     def test_dead_spot(self, line, max_dist):
 
-        sample_offsets = [
-            (10, 0),     # Right
-            (-10, 0),    # Left
-            (0, 10),     # Down
-            (0, -10),    # Up
+        sample_offsets = [    #only check the corners of the reference area
+            (2, 0),     # Right
+            (-2, 0),    # Left
+            (0, 2),     # Down
+            (0, -2),    # Up
         ]
         
         predictions = []
@@ -740,30 +740,54 @@ class GraphHandler:
                     test_data.edge_index,
                     test_data.target_point
                 )
-                vector = z_pred[0:2]
+                test_line = self.decompose_node(z_pred)
+                test_line.update_position_from_reference(test_data.center_point, max_dist=max_dist)
+                movement_vec = torch.tensor([test_line.position['x'] - test_pos['x'], test_line.position['y'] - test_pos['y']])
+                to_center_vec = torch.tensor([line.position['x'] - test_pos['x'], line.position['y'] - test_pos['y']])
+                dot_product = torch.dot(movement_vec, to_center_vec)
+                angle = torch.acos(dot_product / (torch.norm(movement_vec) * torch.norm(to_center_vec)))
+                angle = angle * 180 / math.pi
                 
-                angle = math.atan2(vector[1], vector[0])
-                predictions.append(angle)
-        
-        # Average all valid predictions
-        if len(predictions) > 0:
-            # INSERT_YOUR_CODE
-            import numpy as np
-            # Normalize angles to [-pi, pi]
-            angles = np.array(predictions)
-            angles = np.mod(angles + np.pi, 2 * np.pi) - np.pi
-            # Circular variance: 1 - R (mean resultant length)
-            R = np.sqrt(np.mean(np.cos(angles)) ** 2 + np.mean(np.sin(angles)) ** 2)
-            circular_variance = 1 - R
-            print("Circular variance between dead spot angles:", circular_variance, predictions)
-            return circular_variance
-        else:
-            # Fallback: if all positions failed, return None
-            # Caller should handle this case
-            print("Warning: All multi-position predictions failed")
-            return None
+                predictions.append(angle.item())
+              
+        return predictions
 
-    def calculate_flow_grid(self, grid_resolution=10):
+    def evaluate_ensemble(self, line, max_dist):
+        predictions = []
+        sample_offsets = [
+            (0, 0),      # Current position
+            (10,10),
+            (10,-10),
+            (-10,10),
+            (-10,-10),
+            (10, 0),     # Right
+            (-10, 0),    # Left
+            (0, 10),     # Down
+            (0, -10),    # Up
+            (1,1),
+            (1,-1),
+            (-1,1),
+            (-1,-1),
+            (1,0),
+            (-1,0),
+            (0,1),
+            (0,-1),
+        ]
+        for dx, dy in sample_offsets:
+            test_pos = {
+                'x': line.position['x'] + dx,
+                'y': line.position['y'] + dy
+            }
+            data = self.sample_pattern_from_position(test_pos, latent_name=self.pattern_trainer.name, max_dist=max_dist, inference=True)
+            if data is not None:
+                z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                test_line = self.decompose_node(z)
+                test_line.update_position_from_reference(data.center_point, max_dist=max_dist)
+                predictions.append(test_line)
+        return predictions
+
+
+    def calculate_flow_grid(self, grid_resolution=50):
         max_dist = self.pattern_trainer.max_dist
         min_x = min([line.position['x'] for line in self.lines])
         max_x = max([line.position['x'] for line in self.lines])
@@ -785,6 +809,36 @@ class GraphHandler:
                     flow_data.append({'x': x, 'y': y, 'pred_x': line.position['x'], 'pred_y': line.position['y'], 'line': line.to_JSON()})
 
         return flow_data
+
+    def accept_stationary_lines(self):
+        for line in self.lines:
+            
+            if line is None:
+                continue
+            if not line.immutable:
+                
+                
+                
+                data = self.sample_pattern_from_position(line.position, latent_name=self.pattern_trainer.name, max_dist=self.pattern_trainer.max_dist, inference=True)
+                if data is None:
+                    continue
+                next_z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                old_z = line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=data.center_point, max_dist=self.pattern_trainer.max_dist)
+                if next_z is None:
+                    continue
+
+                #next_z = next_z * 0.1 + old_z * (1 - 0.1)
+
+                diff = torch.sum(torch.abs(next_z - old_z))
+                print(f"\033[94mdiff stationary line check {diff}\033[0m")
+                if diff < 3:
+                    line.immutable = True
+
+                new_line = self.decompose_node(next_z)
+                new_line.update_position_from_reference(data.center_point, max_dist=self.pattern_trainer.max_dist)
+                    
+                self.ghost_lines.append(new_line)
+            
 
 
     def calculate_gen_step(self, use_combinations=True, adaption_rate=0.1, average_predictions=False):
@@ -874,13 +928,24 @@ class GraphHandler:
                 line.stopped = False
 
                 if diff < 0.05:
-                    
+                    #dist_variance = self.test_dead_spot(line, max_dist)
+                    #print(f"DEBUG: dist_variance={dist_variance}, type={type(dist_variance)}, is_not_none={dist_variance is not None}, greater_than_1000={dist_variance > 1000 if dist_variance is not None else 'N/A'}")
+                    #if dist_variance is not None and dist_variance > 300:
+                    #    print("\033[92mKICK\033[0m")
+                        
+                    #    self.gen_step.append(None)
+                    #else:
+
+
                     line.stopped = True
                     self.lines[i].stopped = True
                     print("line stopped at diff", diff)
                     line.used_ids = data.used_ids
                     #self.ghost_lines.append(line)
                     self.gen_step.append(line)
+                    
+                    
+                    
                     continue
 
                 
@@ -917,15 +982,11 @@ class GraphHandler:
 
 
         step_lines = []
-        # INSERT_YOUR_CODE
-        import random
-        all_indices = list(range(len(self.lines)))
-
-        num_to_select = max(1, int(len(all_indices) * 0.1))
+       
         
-        selected_indices = random.sample(all_indices, num_to_select)
+        selected_indices = [i for i, line in enumerate(self.lines) if not line.immutable and line is not None]
         # INSERT_YOUR_CODE
-        not_selected_lines = [self.lines[i] for i in all_indices if i not in selected_indices]
+        not_selected_lines = [line for line in self.lines if line.immutable]
         print("selected indices", selected_indices)
         for i in selected_indices:
             
@@ -1431,6 +1492,8 @@ class GraphHandler:
         distances = []
         line_indices = []
         for i, line in enumerate(lines):
+            if line is None:
+                continue
             if check_fixed and line.is_fixed is False:
                 continue
             line_pos = torch.tensor([line.position['x'], line.position['y']], dtype=torch.float)
