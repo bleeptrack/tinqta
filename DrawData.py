@@ -784,7 +784,16 @@ class GraphHandler:
                 test_line = self.decompose_node(z)
                 test_line.update_position_from_reference(data.center_point, max_dist=max_dist)
                 predictions.append(test_line)
-        return predictions
+        
+        clusters = GraphHandler.find_position_clusters(predictions, 15)
+        biggest_cluster = max(clusters.values(), key=len)
+        averaged_z = GraphHandler.average_latent_vectors(biggest_cluster, biggest_cluster[0].position, max_dist)
+        
+        # Convert the averaged z tensor to a Line object
+        averaged_line = self.decompose_node(averaged_z)
+        averaged_line.update_position_from_reference(biggest_cluster[0].position, max_dist)
+        
+        return predictions, averaged_line
 
 
     def calculate_flow_grid(self, grid_resolution=50):
@@ -1863,6 +1872,7 @@ class GraphHandler:
         #print("Clustered lines by latent:", {label: len(clusters_latent[label]) for label in clusters_latent})
        
         return clusters_latent
+
 
     # def get_total_tensor(self):
     #     total_position_points = self._points2Tensor()

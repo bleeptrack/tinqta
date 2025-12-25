@@ -702,11 +702,14 @@ def generate_pattern(data):
                     #    gh.lines[idx] = backup_lines[idx]
                         continue
                     if not line.is_fixed:
-                        predictions = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist)
-                        print("predictions", predictions)
-                        info["ghost_lines"] = [line.to_JSON() for line in predictions]
-                        emit('prediction', info)
+                        # Get clustered results from ensemble predictions
+                        ensemble_predictions, average_line = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist)
+                        ensemble_predictions.append(average_line)
                         
+                        info["ghost_lines"] = [line.to_JSON() for line in ensemble_predictions]
+                            
+                        emit('prediction', info)
+
                         if not line.stopped:
                             if idx < len(backup_lines):
                                 print("line not fixed or stopped. restoring from backup", idx)

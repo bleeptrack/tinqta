@@ -169,6 +169,13 @@ export class PatternTrainer extends HTMLElement {
 				l.opacity = 0.3
 				l.strokeWidth = 10
 				l.strokeCap = "round"
+
+				if(line === data["ghost_lines"][data["ghost_lines"].length - 1]){
+					l.strokeColor = "green"
+					l.strokeWidth = 20
+					l.opacity = 1
+					l.strokeCap = "round"
+				}
 				//l.translate(paper.view.center)
 			}
 		}
