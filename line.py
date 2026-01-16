@@ -42,7 +42,9 @@ class Line():
         return points
     
     def diff(self, other):
-        return torch.abs(torch.sum(torch.tensor([[point['x'] - other.points[i]['x'], point['y'] - other.points[i]['y']] for i, point in enumerate(self.points)], dtype=torch.float)))
+        if self.position_type == "relative" or other.position_type == "relative":
+            raise ValueError("Relative position type not supported for diff")
+        return torch.sum(torch.abs(torch.tensor([[point['x'] - other.points[i]['x'], point['y'] - other.points[i]['y']] for i, point in enumerate(self.points)], dtype=torch.float)))
     
     def get_latent_vector(self, latent_name=None):
         if latent_name is None:
@@ -52,6 +54,7 @@ class Line():
                 raise ValueError("No latent name provided to fetch latent vector")
         return self.latent_vectors[latent_name]
     
+    #compares only the shape latent vectors
     def latent_line_diff(self, other, latent_name=None):
         if latent_name is None:
             if len(self.latent_vectors.keys()) == 1:
@@ -60,6 +63,19 @@ class Line():
                 raise ValueError("No latent name provided to fetch latent vector")
         z1 = self.latent_vectors[latent_name]
         z2 = other.latent_vectors[latent_name]
+        return torch.dist(z1, z2, p=2)
+
+    def pattern_latent_diff(self, other, latent_name=None, max_dist=None):
+        if latent_name is None:
+            if len(self.latent_vectors.keys()) == 1:
+                latent_name = list(self.latent_vectors.keys())[0]
+            else:
+                raise ValueError("No latent name provided to fetch latent vector")
+
+        center_position = self.position
+        z1 = self.get_pattern_z(latent_name=latent_name, center_position=center_position, max_dist=max_dist)
+        z2 = other.get_pattern_z(latent_name=latent_name, center_position=center_position, max_dist=max_dist)
+        print("diff", torch.dist(z1, z2, p=2))
         return torch.dist(z1, z2, p=2)
     
     def pos_diff(self, other):
@@ -170,6 +186,8 @@ class Line():
             line["outside_directions"] = self.outside_directions
         if hasattr(self, 'patch_id'):
             line["patch_id"] = self.patch_id
+        if hasattr(self, 'cluster_number'):
+            line["cluster_number"] = int(self.cluster_number)  # Ensure it's a Python int for JSON serialization
         return line
     
     def clone(self):

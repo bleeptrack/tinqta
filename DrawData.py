@@ -752,27 +752,24 @@ class GraphHandler:
               
         return predictions
 
-    def evaluate_ensemble(self, line, max_dist):
+    def evaluate_ensemble(self, line, max_dist, distance_list=[1,5], last_cluster_position=None, diff_reference=None):
         predictions = []
         sample_offsets = [
-            (0, 0),      # Current position
-            (10,10),
-            (10,-10),
-            (-10,10),
-            (-10,-10),
-            (10, 0),     # Right
-            (-10, 0),    # Left
-            (0, 10),     # Down
-            (0, -10),    # Up
-            (1,1),
-            (1,-1),
-            (-1,1),
-            (-1,-1),
-            (1,0),
-            (-1,0),
-            (0,1),
-            (0,-1),
+            (0, 0)
         ]
+
+        for x in distance_list:
+            sample_offsets.extend([
+                (x,x),
+                (x,-x),
+                (-x,x),
+                (-x,-x),
+                (x,0),
+                (-x,0),
+                (0,x),
+                (0,-x)
+            ])
+
         for dx, dy in sample_offsets:
             test_pos = {
                 'x': line.position['x'] + dx,
@@ -781,19 +778,98 @@ class GraphHandler:
             data = self.sample_pattern_from_position(test_pos, latent_name=self.pattern_trainer.name, max_dist=max_dist, inference=True)
             if data is not None:
                 z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+                if z is None:
+                    continue
                 test_line = self.decompose_node(z)
                 test_line.update_position_from_reference(data.center_point, max_dist=max_dist)
                 predictions.append(test_line)
+                #print("used ids", data.used_ids)
+
+        if len(sample_offsets) == 1:
+            print("only one sample offset", predictions)
+            if len(predictions) > 0:
+                center_position = line.position
+                averaged_latent = predictions[0].get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
+                next_z = averaged_latent
+                #next_z = averaged_line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
+                old_z = line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
+
+                adaption_rate = 0.1
+
+                next_z = next_z * adaption_rate + old_z * (1 - adaption_rate)
+
+                adapted_line = self.decompose_node(next_z)
+                adapted_line.update_position_from_reference(center_position, max_dist=max_dist)
+                return [predictions], predictions[0], 0, 1, adapted_line
         
-        clusters = GraphHandler.find_position_clusters(predictions, 15)
-        biggest_cluster = max(clusters.values(), key=len)
-        averaged_z = GraphHandler.average_latent_vectors(biggest_cluster, biggest_cluster[0].position, max_dist)
+        # Handle case when no predictions were made
+        if not predictions:
+            # Return empty list to match the expected structure (list of lists)
+            print("no predictions")
+            return [], None, None, 0, None
         
-        # Convert the averaged z tensor to a Line object
-        averaged_line = self.decompose_node(averaged_z)
-        averaged_line.update_position_from_reference(biggest_cluster[0].position, max_dist)
+
+        clusters = GraphHandler.find_position_clusters(predictions, 10)
+        #clusters = GraphHandler.find_latent_clusters(predictions, 0.1)
+        #clusters = self.find_position_clusters_by_closest_original_line(predictions)
+
+        # Remove all clusters that have 3 or less items
+        #clusters = {k: v for k, v in clusters.items() if len(v) > 3}
         
-        return predictions, averaged_line
+        # Handle case when no clusters were found
+        if not clusters:
+            # Return predictions as a list of lists to match the expected structure
+            print("no clusters")
+            return [predictions], None, None, 0, None 
+
+        
+        if last_cluster_position is not None:
+            # Find the cluster closest to last_cluster_position
+            def cluster_distance(cluster_lines):
+                # Calculate centroid of the cluster
+                avg_x = sum(line.position['x'] for line in cluster_lines) / len(cluster_lines)
+                avg_y = sum(line.position['y'] for line in cluster_lines) / len(cluster_lines)
+                # Calculate Euclidean distance
+                dx = avg_x - last_cluster_position['x']
+                dy = avg_y - last_cluster_position['y']
+                print("dx", dx, "dy", dy, "last_cluster_position", last_cluster_position)
+                return math.sqrt(dx * dx + dy * dy)
+            
+            # Sort clusters by distance to last_cluster_position
+            clusters = sorted(clusters.values(), key=cluster_distance)
+            biggest_cluster = clusters[0]  # Closest cluster
+        else:
+            # Convert clusters dict to list and find the biggest one
+            clusters = list(clusters.values())
+            biggest_cluster = max(clusters, key=len)
+
+        # Calculate averaged line from the selected cluster
+        center_position = biggest_cluster[0].position
+        averaged_latent = GraphHandler.average_latent_vectors(biggest_cluster, center_position, max_dist)
+        averaged_line = self.decompose_node(averaged_latent)
+        averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
+        
+        # Calculate cluster variance
+        cluster_variance = GraphHandler.compute_cluster_variance(biggest_cluster, max_dist)
+        #cluster_variance = []
+        #for line in biggest_cluster:
+        #    cluster_variance.append(line.diff(diff_reference if diff_reference is not None else averaged_line))
+        #cluster_variance = sum(cluster_variance) / len(cluster_variance)
+
+        next_z = averaged_latent
+        #next_z = averaged_line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
+        old_z = line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
+
+        adaption_rate = 0.1
+
+        next_z = next_z * adaption_rate + old_z * (1 - adaption_rate)
+
+        adapted_line = self.decompose_node(next_z)
+        adapted_line.update_position_from_reference(center_position, max_dist=max_dist)
+
+
+        
+        return clusters, averaged_line, cluster_variance, len(clusters), adapted_line
 
 
     def calculate_flow_grid(self, grid_resolution=50):
@@ -1836,28 +1912,91 @@ class GraphHandler:
         return torch.mean(torch.stack(zs), dim=0)
 
     @staticmethod
+    def compute_cluster_variance(lines, max_dist):
+        """
+        Compute variance in the latent vector z across lines in a cluster.
+        
+        The latent vector z includes position (normalized by max_dist), rotation, scale,
+        and the full latent vector representation.
+        
+        Returns a single float value representing the overall variance (trace of covariance matrix).
+        """
+        if not lines or len(lines) < 2:
+            return 0.0
+        
+        # Get center position from first line (for normalizing positions in z)
+        center_position = lines[0].position
+        
+        # Get latent vectors z for all lines
+        zs = []
+        for line in lines:
+            z = line.get_pattern_z(center_position=center_position, max_dist=max_dist)
+            zs.append(z)
+        
+        # Stack into tensor: shape (n_lines, z_dim)
+        z_stack = torch.stack(zs)
+        
+        # Compute variance: trace of covariance matrix (sum of variances across all dimensions)
+        # This gives the total variance across all dimensions of the latent vector
+        z_mean = torch.mean(z_stack, dim=0)
+        z_centered = z_stack - z_mean
+        # Compute covariance matrix
+        cov_matrix = torch.mm(z_centered.t(), z_centered) / (len(lines) - 1)
+        # Trace is sum of diagonal (variances in each dimension)
+        total_variance = torch.trace(cov_matrix).item()
+        
+        print("latent_vector_variance", total_variance)
+        
+        return float(total_variance)
+
+    @staticmethod
     def find_position_clusters(lines, eps):
+        # Handle empty input
+        if not lines:
+            return {}
+        
         positions = np.array([[line.position['x'], line.position['y']] for line in lines])
+        # Ensure positions is 2D (should be (n, 2) for n lines with x,y coordinates)
+        # If somehow we get a 1D array, reshape it properly
+        if positions.ndim == 1:
+            # This shouldn't happen with the list comprehension above, but handle defensively
+            if positions.size == 0:
+                return {}
+            # Reshape to (n, 2) - assuming even number of elements
+            positions = positions.reshape(-1, 2)
+        
         dbscan_position = DBSCAN(eps, min_samples=2)
         labels_position = dbscan_position.fit_predict(positions)
         
         # Group lines by cluster label
         clusters_position = {}
         for idx, label in enumerate(labels_position):
+            # Skip noise points (label -1) - they don't belong to any cluster
+            if label == -1:
+                continue
             if label not in clusters_position:
                 clusters_position[label] = []
             clusters_position[label].append(lines[idx])
         
         # Now clusters[label] contains the list of lines in that cluster
-        # Note: label -1 means noise/outliers
+        # Note: label -1 means noise/outliers (filtered out above)
         #print("Clustered lines by position:", {label: len(clusters_position[label]) for label in clusters_position})
        
         return clusters_position
+
+    def find_position_clusters_by_closest_original_line(self, lines):
+        clusters = {}
+        for line in lines:
+            _, _, closest_idx = self.get_closest_original_line(line)
+            if closest_idx not in clusters:
+                clusters[closest_idx] = []
+            clusters[closest_idx].append(line)
+        return clusters
     
     @staticmethod
     def find_latent_clusters(lines, eps):
         latent_vectors = np.array([line.get_latent_vector().detach().numpy() for line in lines])
-        dbscan_latent = DBSCAN(eps, min_samples=2)
+        dbscan_latent = DBSCAN(eps, min_samples=5)
         labels_latent = dbscan_latent.fit_predict(latent_vectors)
 
         # nur latent vector gerade. sollte da scale und rotation rein?

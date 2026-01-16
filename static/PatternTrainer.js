@@ -164,8 +164,9 @@ export class PatternTrainer extends HTMLElement {
 		}
 		// Other visualizations used by generate pattern
 		if(data["ghost_lines"]){
+			let clusterColors = ["red", "blue", "yellow", "purple", "orange", "pink", "brown", "grey", "black"]
 			for(let line of data["ghost_lines"]){
-				let l = this.canvas.drawLine(line, "red")
+				let l = this.canvas.drawLine(line, clusterColors[line["cluster_number"]])
 				l.opacity = 0.3
 				l.strokeWidth = 10
 				l.strokeCap = "round"
