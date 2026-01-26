@@ -211,7 +211,7 @@ export class PatternTrainer extends HTMLElement {
 			for(let line of data["merged_lines"]){
 				let l = this.canvas.drawLine(line, "blue")
 				l.opacity = 0.3
-				l.strokeWidth = 20
+				l.strokeWidth = 5
 				l.strokeCap = "round"
 			}
 		}
@@ -257,7 +257,6 @@ export class PatternTrainer extends HTMLElement {
 				l.strokeCap = "round"
 				//l.translate(paper.view.center)
 			}
-			
 		}
 		
 		this.canvas.centerDrawing()

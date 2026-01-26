@@ -752,7 +752,7 @@ class GraphHandler:
               
         return predictions
 
-    def evaluate_ensemble(self, line, max_dist, distance_list=[1,5], last_cluster_position=None, diff_reference=None):
+    def evaluate_ensemble(self, line, max_dist, distance_list=[1,5]):
         predictions = []
         sample_offsets = [
             (0, 0)
@@ -770,6 +770,7 @@ class GraphHandler:
                 (0,-x)
             ])
 
+        used_ids = None
         for dx, dy in sample_offsets:
             test_pos = {
                 'x': line.position['x'] + dx,
@@ -783,6 +784,8 @@ class GraphHandler:
                 test_line = self.decompose_node(z)
                 test_line.update_position_from_reference(data.center_point, max_dist=max_dist)
                 predictions.append(test_line)
+                if used_ids is None:
+                    used_ids = data.used_ids
                 #print("used ids", data.used_ids)
 
         if len(sample_offsets) == 1:
@@ -794,12 +797,13 @@ class GraphHandler:
                 #next_z = averaged_line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
                 old_z = line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
 
-                adaption_rate = 0.1
+                adaption_rate = 0.05
 
                 next_z = next_z * adaption_rate + old_z * (1 - adaption_rate)
 
                 adapted_line = self.decompose_node(next_z)
                 adapted_line.update_position_from_reference(center_position, max_dist=max_dist)
+                adapted_line.used_ids = used_ids
                 return [predictions], predictions[0], 0, 1, adapted_line
         
         # Handle case when no predictions were made
@@ -823,38 +827,19 @@ class GraphHandler:
             return [predictions], None, None, 0, None 
 
         
-        if last_cluster_position is not None:
-            # Find the cluster closest to last_cluster_position
-            def cluster_distance(cluster_lines):
-                # Calculate centroid of the cluster
-                avg_x = sum(line.position['x'] for line in cluster_lines) / len(cluster_lines)
-                avg_y = sum(line.position['y'] for line in cluster_lines) / len(cluster_lines)
-                # Calculate Euclidean distance
-                dx = avg_x - last_cluster_position['x']
-                dy = avg_y - last_cluster_position['y']
-                print("dx", dx, "dy", dy, "last_cluster_position", last_cluster_position)
-                return math.sqrt(dx * dx + dy * dy)
-            
-            # Sort clusters by distance to last_cluster_position
-            clusters = sorted(clusters.values(), key=cluster_distance)
-            biggest_cluster = clusters[0]  # Closest cluster
-        else:
-            # Convert clusters dict to list and find the biggest one
-            clusters = list(clusters.values())
-            biggest_cluster = max(clusters, key=len)
+        
+        
+        clusters = list(clusters.values())
+        biggest_cluster = max(clusters, key=len)
 
         # Calculate averaged line from the selected cluster
         center_position = biggest_cluster[0].position
         averaged_latent = GraphHandler.average_latent_vectors(biggest_cluster, center_position, max_dist)
         averaged_line = self.decompose_node(averaged_latent)
         averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
+        averaged_line.used_ids = used_ids
         
-        # Calculate cluster variance
-        cluster_variance = GraphHandler.compute_cluster_variance(biggest_cluster, max_dist)
-        #cluster_variance = []
-        #for line in biggest_cluster:
-        #    cluster_variance.append(line.diff(diff_reference if diff_reference is not None else averaged_line))
-        #cluster_variance = sum(cluster_variance) / len(cluster_variance)
+        
 
         next_z = averaged_latent
         #next_z = averaged_line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
@@ -866,10 +851,10 @@ class GraphHandler:
 
         adapted_line = self.decompose_node(next_z)
         adapted_line.update_position_from_reference(center_position, max_dist=max_dist)
-
+        adapted_line.used_ids = used_ids
 
         
-        return clusters, averaged_line, cluster_variance, len(clusters), adapted_line
+        return clusters, averaged_line, 0, len(clusters), adapted_line
 
 
     def calculate_flow_grid(self, grid_resolution=50):

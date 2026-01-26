@@ -590,11 +590,13 @@ def generate_pattern(data):
                         line.stopped = False
                         line.is_fixed = False
                         
-                        predictions, average_line, cluster_variance, num_clusters, adapted_line = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist, distance_list=[0.01], diff_reference=line)
+                        predictions, average_line, cluster_variance, num_clusters, adapted_line = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist, distance_list=[0.01])
                     
-                        if average_line is not None and average_line.pos_diff(line) < 50 and average_line.latent_line_diff(line) < 0.5:
+                        if average_line is not None and average_line.pos_diff(line) < 50 and average_line.latent_line_diff(line) < 1:
                             
                             line.immutable = True
+                            line.stopped = True
+                            line.is_fixed = True
                         else:
 
                             try_later.append(line)
@@ -627,7 +629,7 @@ def generate_pattern(data):
                     adapted_line = None
                     average_line = None
 
-                    for i in range(100):
+                    for i in range(150):
 
                         if adapted_line is not None:
                             old_line = adapted_line.clone()
@@ -637,7 +639,7 @@ def generate_pattern(data):
                             
                             
                         #zu weit weg darf nicht sein. sonst werden manche linien nicht mehr gesehen und die prediction wird schlicht falsch.
-                        predictions, average_line, cluster_variance, num_clusters, adapted_line = gh.evaluate_ensemble(old_line, gh.pattern_trainer.max_dist, distance_list=[0.1])
+                        predictions, average_line, cluster_variance, num_clusters, adapted_line = gh.evaluate_ensemble(old_line, gh.pattern_trainer.max_dist, distance_list=[])
                         if adapted_line is not None:
                             print("DIFF", adapted_line.pos_diff(average_line))
                             diff = adapted_line.pos_diff(old_line)
@@ -661,10 +663,10 @@ def generate_pattern(data):
                         print("num_clusters", num_clusters)
                         print("POS DIFF",i, diff_diff)
                         #ToDo rewoke if variance is too high
-                        if adapted_line is not None and diff_diff < 10:
+                        if adapted_line is not None and diff_diff < 5:
                             # Find the index of the line in gh.lines and replace it
 
-                            predictions_new, average_line_new, cluster_variance_new, num_clusters_new, adapted_line_new = gh.evaluate_ensemble(old_line, gh.pattern_trainer.max_dist, distance_list=[1,2,3,4,5])
+                            predictions_new, average_line_new, cluster_variance_new, num_clusters_new, adapted_line_new = gh.evaluate_ensemble(old_line, gh.pattern_trainer.max_dist, distance_list=[1,5,10])
                             print("ensemble test", num_clusters_new)
                             time.sleep(3)
 
@@ -682,6 +684,23 @@ def generate_pattern(data):
                                 #average_line = None
                                 line = None
                                 #line = None  # Update local variable for consistency
+                            
+
+                            clusters_list = predictions  # predictions contains clusters list from evaluate_ensemble
+                            predictions = []
+                            for cluster_number, cluster_lines in enumerate(predictions_new):
+                                for line in cluster_lines:
+                                    line.cluster_number = int(cluster_number)
+                                    predictions.append(line)
+                            if adapted_line is not None: 
+                                predictions.append(adapted_line) 
+                            info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
+                            info["ghost_lines"] = [line.to_JSON() for line in predictions]
+                            info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in adapted_line.used_ids]
+                            info["merged_lines"] = [line.to_JSON() for line in try_later]
+                            emit('prediction', info)
+                            time.sleep(time_sleep)
+
                             break
                         
                         gh.lines[line_idx] = None
@@ -696,14 +715,20 @@ def generate_pattern(data):
                         
                         clusters_list = predictions  # predictions contains clusters list from evaluate_ensemble
                         predictions = []
+                        
+                        
                         for cluster_number, cluster_lines in enumerate(clusters_list):
                             for line in cluster_lines:
                                 line.cluster_number = int(cluster_number)
                                 predictions.append(line)
                         if adapted_line is not None: 
                             predictions.append(adapted_line) 
+                       
+                        
                         info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                         info["ghost_lines"] = [line.to_JSON() for line in predictions]
+                        info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in adapted_line.used_ids]
+                        
                         emit('prediction', info)
                         time.sleep(time_sleep)
                         
