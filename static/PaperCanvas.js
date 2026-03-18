@@ -18,8 +18,8 @@ export class PaperCanvas extends HTMLElement {
 			<style>
 				
 				canvas[resize] {
-					width: 960px;
-					height: 540px;
+					width: 100%;
+					height: 100%;
 				}	
 			</style>
 			
@@ -136,6 +136,30 @@ export class PaperCanvas extends HTMLElement {
 		}
 		paper.project.layers["background"].position = paper.view.center
 	}
+
+	setDrawingGuides(){
+		const prevLayer = paper.project.activeLayer
+		const guides = new paper.Layer({ name: "guides" })
+		guides.activate()
+
+		const guideBounds = paper.view.bounds.scale(0.9)
+		const guide = new paper.Path.Rectangle(guideBounds)
+		guide.strokeColor = 'grey'
+		guide.strokeWidth = 5
+
+		const dist = guide.bounds.height / 20
+		for (let y = dist; y < guide.bounds.height; y += dist) {
+			for (let x = dist; x < guide.bounds.width; x += dist) {
+				const pt = new paper.Point(guide.bounds.left + x, guide.bounds.top + y)
+				const dot = new paper.Path.Circle(pt, 5)
+				dot.fillColor = 'grey'
+				dot.opacity = 0.5
+			}
+		}
+
+		if (prevLayer) prevLayer.activate()
+
+	}
 	
 	setPlaceholder(){
 		paper.project.importSVG("/static/placeholder.svg", (svg) => {
@@ -155,10 +179,37 @@ export class PaperCanvas extends HTMLElement {
 	connectedCallback() {
 		paper.install(window)
 		let canvas = this.shadow.getElementById('paperCanvas');
+
+		// Disable right-click context menu on the drawing surface.
+		canvas.addEventListener('contextmenu', (e) => e.preventDefault())
+
+		// Zoom with scroll wheel / trackpad (zoom towards cursor).
+		canvas.addEventListener('wheel', (e) => {
+			e.preventDefault()
+
+			const oldZoom = paper.view.zoom
+			const minZoom = 0.2
+			const maxZoom = 8
+
+			// Smooth zoom factor. (Positive deltaY = scroll down = zoom out)
+			const zoomFactor = Math.pow(1.0015, -e.deltaY)
+			const targetZoom = Math.min(maxZoom, Math.max(minZoom, oldZoom * zoomFactor))
+			if (targetZoom === oldZoom) return
+
+			const viewPoint = new paper.Point(e.offsetX, e.offsetY)
+			const projectPoint = paper.view.viewToProject(viewPoint)
+
+			// Keep `projectPoint` stationary in view space while zooming.
+			const beta = oldZoom / targetZoom
+			const newCenter = projectPoint.subtract(projectPoint.subtract(paper.view.center).multiply(beta))
+			paper.view.zoom = targetZoom
+			paper.view.center = newCenter
+		}, { passive: false })
+
 		paper.setup(canvas);
 
 		paper.project.activeLayer.name = "lines"
-		paper.project.view.zoom = 0.2
+		
 
 		let bgLayer = new paper.Layer({name: "background"})
 		
@@ -172,13 +223,28 @@ export class PaperCanvas extends HTMLElement {
 		
 		
 		let tool = new Tool()
-		tool.minDistance = 6
+		const drawMinDistance = 6
+		tool.minDistance = drawMinDistance
 
 		var path
+		let isPanning = false
+		let panLastClient = null
 		this.linelist = []
 		this.originalLines = []
 
 		tool.onMouseDown = function (event) {
+			const btn = (event.event && typeof event.event.button === 'number') ? event.event.button : 0
+			if (btn === 2) {
+				isPanning = true
+				if (event.event && typeof event.event.clientX === 'number' && typeof event.event.clientY === 'number') {
+					panLastClient = { x: event.event.clientX, y: event.event.clientY }
+				} else {
+					panLastClient = null
+				}
+				tool.minDistance = 0
+				return
+			}
+			if (btn !== 0) return
 			path = new Path()
 			path.strokeColor = "black"
 			path.strokeWidth = 3
@@ -187,16 +253,49 @@ export class PaperCanvas extends HTMLElement {
 		}
 
 		tool.onMouseDrag = function (event) {
-			path.add(event.point)
+			if (isPanning) {
+				// Use native mouse movement in screen pixels to avoid jitter caused by changing
+				// the view transform while Paper.js recomputes `event.point` in project space.
+				const e = event.event
+				if (!e) return
+
+				let dx = 0
+				let dy = 0
+				if (typeof e.movementX === 'number' && typeof e.movementY === 'number') {
+					dx = e.movementX
+					dy = e.movementY
+				} else if (panLastClient && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+					dx = e.clientX - panLastClient.x
+					dy = e.clientY - panLastClient.y
+					panLastClient = { x: e.clientX, y: e.clientY }
+				}
+
+				if (dx !== 0 || dy !== 0) {
+					const delta = new paper.Point(dx, dy).divide(paper.view.zoom)
+					paper.view.center = paper.view.center.subtract(delta)
+				}
+				return
+			}
+			if (path) path.add(event.point)
 		}
 
-		tool.onMouseUp = () => {
+		tool.onMouseUp = (event) => {
+			if (isPanning) {
+				isPanning = false
+				panLastClient = null
+				tool.minDistance = drawMinDistance
+				return
+			}
+			const btn = (event.event && typeof event.event.button === 'number') ? event.event.button : 0
+			if (btn !== 0) return
+			if(!path) return
 			if(path.segments.length > 1){
 				path.simplify()
 				this.processLine(path)
 			}else{
 				path.remove()
 			}
+			path = null
 		}
 	}
 

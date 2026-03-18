@@ -17,6 +17,7 @@ export class PatternTrainer extends HTMLElement {
 		this.socket.on("init", (config) => {
 			console.log("config received", config)
 			this.canvas.setConfig(config)
+			this.canvas.setDrawingGuides()
 			
 		})
 		
@@ -164,19 +165,13 @@ export class PatternTrainer extends HTMLElement {
 		}
 		// Other visualizations used by generate pattern
 		if(data["ghost_lines"]){
-			let clusterColors = ["red", "blue", "yellow", "purple", "orange", "pink", "brown", "grey", "black"]
+			let clusterColors = ["red", "blue", "purple", "orange", "pink", "brown", "grey", "black"]
 			for(let line of data["ghost_lines"]){
 				let l = this.canvas.drawLine(line, clusterColors[line["cluster_number"]])
 				l.opacity = 0.3
 				l.strokeWidth = 10
 				l.strokeCap = "round"
 
-				if(line === data["ghost_lines"][data["ghost_lines"].length - 1]){
-					l.strokeColor = "green"
-					l.strokeWidth = 20
-					l.opacity = 1
-					l.strokeCap = "round"
-				}
 				//l.translate(paper.view.center)
 			}
 		}
@@ -207,11 +202,19 @@ export class PatternTrainer extends HTMLElement {
 				l.strokeCap = "round"
 			}
 		}
-		if(data["merged_lines"]){
-			for(let line of data["merged_lines"]){
-				let l = this.canvas.drawLine(line, "blue")
-				l.opacity = 0.3
-				l.strokeWidth = 5
+		if(data["average_line"]){
+			for(let line of data["average_line"]){
+				let l = this.canvas.drawLine(line, "green")
+				l.opacity = 0.5
+				l.strokeWidth = 30
+				l.strokeCap = "round"
+			}
+		}
+		if(data["comparison_line"]){
+			for(let line of data["comparison_line"]){
+				let l = this.canvas.drawLine(line, "red")
+				l.opacity = 1
+				l.strokeWidth = 15
 				l.strokeCap = "round"
 			}
 		}
@@ -274,18 +277,25 @@ export class PatternTrainer extends HTMLElement {
 			<style>
 				#container{
 					display: flex;
-					flex-direction: column;
+					flex-direction: row;
 					height: 100%;
+					width: 100%;
 					box-sizing: border-box;
 					padding: 5%;
 					gap: 1vh;
 				}
 				#canvas-container{
-					width: 100%;
+					width: 60vw;
+					height: 100%;
 					flex: 1;
 					border: 2px solid black;
 					position: relative;
 					min-height: 0;
+
+				}
+				#canvas-container canvas{
+					width: 100%;
+					height: 100%;
 				}
 				input{
 					max-width: 40vw;
@@ -311,23 +321,28 @@ export class PatternTrainer extends HTMLElement {
 				}
 				#button-container{
 					display: flex;
-					flex-direction: row;
+					flex-direction: column;
 					gap: 1vh;
+					width: 100%;
 				}
 			</style>
 			
 			<div id="container">
-				<h1>Train your Scribble Model</h1>
-				<div id="name" class="scribble input" placeholder="Enter your model name" contenteditable=true></div>
+				
+				<aside id="aside">
+					<h1>Train your Scribble Model</h1>
+					<div id="name" class="scribble input" placeholder="Enter your model name" contenteditable=true></div>
+					
+					<div id="button-container">
+						<button id="train" class="scribble">train</button>
+						<button id="test-lines" class="scribble">test lines</button>
+						<button id="pattern-sample" class="scribble">get pattern sample</button>
+						<button id="train-pattern" class="scribble">train pattern</button>
+						<button id="generate-pattern" class="scribble">generate pattern</button>
+					</div>
+				</aside>
 				<div id="canvas-container">
 					<button id="undo" class="material-symbols-outlined scribble">undo</button>
-				</div>
-				<div id="button-container">
-					<button id="train" class="scribble">train</button>
-					<button id="test-lines" class="scribble">test lines</button>
-					<button id="pattern-sample" class="scribble">get pattern sample</button>
-					<button id="train-pattern" class="scribble">train pattern</button>
-					<button id="generate-pattern" class="scribble">generate pattern</button>
 				</div>
 			</div>
 		`;

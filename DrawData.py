@@ -193,6 +193,23 @@ class GraphHandler:
             self.original_lines.append(l)
         print("original lines", len(self.original_lines))
 
+    def add_missing_latent_vectors(self, line_trainer):
+        for line in self.lines:
+            if line_trainer.name not in line.latent_vectors or line.latent_vectors[line_trainer.name] is None:
+                x, edge_index = line.create_line_graph()
+                z = line_trainer.encodeLineVector(x, edge_index)
+                line.add_latent_vector(z, line_trainer.name)
+
+    def add_missing_pattern_latent_vectors(self, pattern_trainer):
+        """Ensure every line has pattern_trainer latent (same dim) so pattern graph stack doesn't fail."""
+        for line in self.lines:
+            x, edge_index = line.create_line_graph()
+            # Encode at line's own position (normalized 0,0)
+            target_pos = torch.tensor([[0.0, 0.0]], dtype=torch.float)
+            z_full = pattern_trainer.predict(x, edge_index, target_pos)
+            # Pattern model returns [pos, scale, rot, vec]; store only vec for latent_vectors
+            line.add_latent_vector(z_full[4:], pattern_trainer.name)
+
     def load_template_from_pattern_trainer(self, pattern_trainer=None):
         if pattern_trainer is None:
             pattern_trainer = self.pattern_trainer
@@ -240,6 +257,7 @@ class GraphHandler:
         self.original_connection_info = {}
         self.avg_latent_diff = []
         self.avg_pos_diff = []
+        self.robust_max_pos_diff = 0
 
         for line_idx, line in enumerate(self.original_lines):
             print(f"Line {line_idx}: {line}")
@@ -286,10 +304,15 @@ class GraphHandler:
         self.min_latent_diff = min(self.avg_latent_diff)
         self.min_pos_diff = min(self.avg_pos_diff)
         self.avg_latent_diff = float(sum(self.avg_latent_diff)) / len(self.avg_latent_diff)
+
+
+        robust_max = np.percentile(self.avg_pos_diff, 75)   # 99th percentile
+        self.robust_max_pos_diff = float(robust_max)
         self.avg_pos_diff = float(sum(self.avg_pos_diff)) / len(self.avg_pos_diff)
 
         print("Average latent diff:", self.avg_latent_diff)
         print("Average pos diff:", self.avg_pos_diff)
+        print("Robust max pos diff:", self.robust_max_pos_diff)
         print("Min latent diff:", self.min_latent_diff)
         print("Min pos diff:", self.min_pos_diff)
         
@@ -752,6 +775,16 @@ class GraphHandler:
               
         return predictions
 
+    def predict_to_draw(self, position):
+        data = self.sample_pattern_from_position(position, latent_name=self.pattern_trainer.name, max_dist=self.pattern_trainer.max_dist, inference=True)
+        if data is not None:
+            z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+            line = self.decompose_node(z)
+            line.update_position_from_reference(data.center_point, max_dist=self.pattern_trainer.max_dist)
+            return line
+        else:
+            return None
+
     def evaluate_ensemble(self, line, max_dist, distance_list=[1,5]):
         predictions = []
         sample_offsets = [
@@ -788,29 +821,21 @@ class GraphHandler:
                     used_ids = data.used_ids
                 #print("used ids", data.used_ids)
 
-        if len(sample_offsets) == 1:
-            print("only one sample offset", predictions)
-            if len(predictions) > 0:
-                center_position = line.position
-                averaged_latent = predictions[0].get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
-                next_z = averaged_latent
-                #next_z = averaged_line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
-                old_z = line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
-
-                adaption_rate = 0.05
-
-                next_z = next_z * adaption_rate + old_z * (1 - adaption_rate)
-
-                adapted_line = self.decompose_node(next_z)
-                adapted_line.update_position_from_reference(center_position, max_dist=max_dist)
-                adapted_line.used_ids = used_ids
-                return [predictions], predictions[0], 0, 1, adapted_line
-        
         # Handle case when no predictions were made
         if not predictions:
-            # Return empty list to match the expected structure (list of lists)
             print("no predictions")
-            return [], None, None, 0, None
+            return ([], [])
+
+        # Edge case: distance_list is empty, only offset (0,0) was calculated
+        if len(sample_offsets) == 1:
+            print("only one sample offset", predictions)
+            # Return single cluster with single averaged line (no adaptation)
+            center_position = line.position
+            averaged_latent = GraphHandler.average_latent_vectors(predictions, center_position, max_dist)
+            averaged_line = self.decompose_node(averaged_latent)
+            averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
+            averaged_line.used_ids = used_ids
+            return ([predictions], [averaged_line])
         
 
         clusters = GraphHandler.find_position_clusters(predictions, 10)
@@ -820,41 +845,37 @@ class GraphHandler:
         # Remove all clusters that have 3 or less items
         #clusters = {k: v for k, v in clusters.items() if len(v) > 3}
         
-        # Handle case when no clusters were found
+        # Handle case when no clusters were found - treat all predictions as single cluster
         if not clusters:
-            # Return predictions as a list of lists to match the expected structure
             print("no clusters")
-            return [predictions], None, None, 0, None 
+            center_position = line.position
+            averaged_latent = GraphHandler.average_latent_vectors(predictions, center_position, max_dist)
+            averaged_line = self.decompose_node(averaged_latent)
+            averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
+            averaged_line.used_ids = used_ids
+            return ([predictions], [averaged_line]) 
 
         
         
         
+        # Convert clusters dict to list
         clusters = list(clusters.values())
-        biggest_cluster = max(clusters, key=len)
-
-        # Calculate averaged line from the selected cluster
-        center_position = biggest_cluster[0].position
-        averaged_latent = GraphHandler.average_latent_vectors(biggest_cluster, center_position, max_dist)
-        averaged_line = self.decompose_node(averaged_latent)
-        averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
-        averaged_line.used_ids = used_ids
+        # Sort clusters by size (largest first)
+        clusters.sort(key=len, reverse=True)
+        
+        # Calculate averaged line for each cluster
+        averaged_lines = []
+        for cluster in clusters:
+            center_position = cluster[0].position
+            averaged_latent = GraphHandler.average_latent_vectors(cluster, center_position, max_dist)
+            averaged_line = self.decompose_node(averaged_latent)
+            averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
+            averaged_line.used_ids = used_ids
+            averaged_lines.append(averaged_line)
         
         
 
-        next_z = averaged_latent
-        #next_z = averaged_line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
-        old_z = line.get_pattern_z(latent_name=self.pattern_trainer.name, center_position=center_position, max_dist=max_dist)
-
-        adaption_rate = 0.1
-
-        next_z = next_z * adaption_rate + old_z * (1 - adaption_rate)
-
-        adapted_line = self.decompose_node(next_z)
-        adapted_line.update_position_from_reference(center_position, max_dist=max_dist)
-        adapted_line.used_ids = used_ids
-
-        
-        return clusters, averaged_line, 0, len(clusters), adapted_line
+        return (clusters, averaged_lines)
 
 
     def calculate_flow_grid(self, grid_resolution=50):
@@ -1729,8 +1750,9 @@ class GraphHandler:
         print("Calculating max_dist for pattern dataset...")
         self.calculate_original_lines()
         self.calculate_line_thresholds()
-        max_dist = self.avg_pos_diff * config['max_dist_factor']
-        print(f"Calculated max_dist: {max_dist} (avg_pos_diff: {self.avg_pos_diff}, factor: {config['max_dist_factor']})")
+        
+        max_dist = self.robust_max_pos_diff
+        print(f"Calculated max_dist: {max_dist} (robust_max_pos_diff: {self.robust_max_pos_diff})")
                 
         file_path = GraphDatasetHandler.get_file_path(name, "pattern")
         data = {

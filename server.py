@@ -55,7 +55,12 @@ gh = GraphHandler()
 init_pattern = True
 line_deposit = []
 
-
+pattern_trainers = {
+    "grid": PatternTrainer("grid")
+}
+line_trainers = {
+    "grid": LineTrainer("grid")
+}
 
 #path = osp.join(osp.dirname(osp.realpath(__file__)), 'data', 'dataset-test')
 #dataset = MyOwnDataset("testdata", path)
@@ -87,6 +92,96 @@ def default_error_handler(e):
 #def new_line(points):
 #    print("new line received", points)
 #    bd.createData(points)
+
+@socketio.on('add:line')
+def add_line(data):
+    print("line received", data)
+    gh.add_lines([data])
+    info = {}
+    info["lines"] = [line.to_JSON() for line in gh.lines]
+    print("lines", info["lines"])
+
+    emit('draw:lines', info)
+
+@socketio.on('add:visual')
+def add_visual(data):
+    print("visual received", data)
+
+    line_data = data['line']
+    position_data = line_data['position'] if 'position' in line_data else None
+    line = Line(line_data['points'], line_data['scale'], line_data['rotation'], position=position_data)
+    print("line", line.to_JSON())
+    name = data['name']
+    correction = data['correction']
+    position = line.position
+
+    lineTrainer = line_trainers[name]
+    patternTrainer = pattern_trainers[name]
+    gh.set_default_trainers(pattern_trainer=patternTrainer, line_trainer=lineTrainer)
+    
+    gh.add_missing_latent_vectors(lineTrainer)
+    line_predicted = gh.predict_to_draw(position)
+
+    x, edge_index = line.create_line_graph()
+    z_line = lineTrainer.encodeLineVector(x, edge_index)
+    line.add_latent_vector(z_line, lineTrainer.name)
+                
+
+    z = line_predicted.get_pattern_z(latent_name=patternTrainer.name, center_position=position, max_dist=patternTrainer.max_dist)
+    z_original = line.get_pattern_z(latent_name=patternTrainer.name, center_position=position, max_dist=patternTrainer.max_dist)
+
+    mix_z = z_original * 0.7 + z * 0.3
+    mix_line = gh.decompose_node(mix_z)
+    mix_line.update_position_from_reference(position, max_dist=patternTrainer.max_dist)
+    mix_line.add_latent_vector(mix_z[4:], patternTrainer.name)
+
+
+    if not correction:
+        print("not correction - resetting position to", position)
+        mix_line.position = position
+
+    if line is not None:
+        gh.lines.append(mix_line)
+        info = {}
+        info["lines"] = [line.to_JSON() for line in gh.lines]
+        print("lines", info["lines"])
+        emit('draw:lines', info)
+    else:
+        print("no line predicted")
+    
+
+@socketio.on('add:stamp')
+def add_stamp(data):
+    print("stamp received", data)
+    name = data['name']
+
+    lineTrainer = line_trainers[name]
+    patternTrainer = pattern_trainers[name]
+    gh.set_default_trainers(pattern_trainer=patternTrainer, line_trainer=lineTrainer)
+
+    correction = data['correction']
+
+    position = {'x': float(data['position']['x']), 'y': float(data['position']['y'])}
+    if len(gh.lines) == 0:
+        
+        gh.calculate_original_lines()
+        line =gh.original_lines[random.randint(0, len(gh.original_lines) - 1)]
+        line.position = position
+    else:
+        gh.add_missing_latent_vectors(lineTrainer)
+        line = gh.predict_to_draw(position)
+        if not correction:
+            print("not correction - resetting position to", position)
+            line.position = position
+
+    if line is not None:
+        gh.lines.append(line)
+        info = {}
+        info["lines"] = [line.to_JSON() for line in gh.lines]
+        print("lines", info["lines"])
+        emit('draw:lines', info)
+    else:
+        print("no line predicted")
 
 @socketio.on('deleteModel')
 def delete_model(data):
@@ -315,10 +410,10 @@ def new_pattern(data):
     base_dataset = gh.calculate_base_dataset()
     noisy_dataset = gh.calculate_dataset_onthefly(nr_samples=len(base_dataset))
 
-    validation_dataset = gh.calculate_dataset_onthefly(nr_samples=len(base_dataset)*0.2)
+    validation_dataset = gh.calculate_dataset_onthefly(nr_samples=len(base_dataset)*0.05)
     pt.setup_from_test_sample(validation_dataset)
     
-    threshold = 5
+    threshold = 10
     count = 0
     
     
@@ -329,23 +424,24 @@ def new_pattern(data):
         if count >= threshold:
             noisy_dataset = gh.calculate_dataset_onthefly(nr_samples=len(base_dataset))
             dataset = base_dataset + noisy_dataset
-            threshold -= 1
+            #threshold -= 1
             count = 0
-            if threshold <= 3:
-                threshold = 3
+        #    if threshold <= 5:
+        #        threshold = 5
 
-        if i > 25:
-            data_jitter = min(0.02, (i - 25) * 0.02 / 50)  # Ramp over 75 epochs
+        if i > 15:
+            data_jitter = min(0.02, (i - 15) * 0.02 / 10)  # Ramp over 10 epochs
         pt.trainModel(dataset, data_jitter=data_jitter)
         count += 1
 
          # Check if learning rate has reached minimum
         current_lr = pt.optimizer.param_groups[0]['lr']
-        min_lr = pt.scheduler.min_lr if pt.scheduler is not None else 0
+        min_lr = pt.scheduler.min_lrs[0] if pt.scheduler is not None else 0
         if current_lr <= min_lr:
             print(f"Stopping training: Learning rate reached minimum ({current_lr})")
             break
 
+        print("current_lr", current_lr, "min_lr", min_lr)
         visualize_dataset = gh.calculate_dataset_onthefly(nr_samples=3) + random.sample(base_dataset, 3)
         
 
@@ -557,6 +653,8 @@ def generate_pattern(data):
         info = {}
         try_later = []
         gen_state = "init"
+        change_in_run = False
+        backup_lines = []
 
         for i in range(1000):
 
@@ -573,9 +671,13 @@ def generate_pattern(data):
                     gh.lines = [line for line in gh.lines if line is not None]
                     choice = random.choice(try_later)
                     try_later.remove(choice)
-                    gh.lines.append(choice)
+                    backup_lines.append(choice.clone())
+                    gh.lines.append(choice.clone())
                 else:
-                    exit()
+                    if change_in_run:
+                        try_later = [line.clone() for line in backup_lines]
+                    else:    
+                        exit()
 
             for line in [l for l in gh.lines if l is not None and not getattr(l, "immutable", False)]:
                 
@@ -590,9 +692,12 @@ def generate_pattern(data):
                         line.stopped = False
                         line.is_fixed = False
                         
-                        predictions, average_line, cluster_variance, num_clusters, adapted_line = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist, distance_list=[0.01])
+                        predictions, average_lines = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist, distance_list=[0.01])
+                        if len(average_lines) <= 0:
+                            continue
+                        average_line = average_lines[0]
                     
-                        if average_line is not None and average_line.pos_diff(line) < 50 and average_line.latent_line_diff(line) < 1:
+                        if average_line is not None and average_line.are_similar(line):
                             
                             line.immutable = True
                             line.stopped = True
@@ -607,6 +712,9 @@ def generate_pattern(data):
                         clusters_list = predictions  # predictions contains clusters list from evaluate_ensemble
                         predictions = []
                         for cluster_number, cluster_lines in enumerate(clusters_list):
+                            # Ensure cluster_lines is a list, not a single Line object
+                            if not isinstance(cluster_lines, list):
+                                cluster_lines = [cluster_lines]
                             for line in cluster_lines:
                                 line.cluster_number = int(cluster_number)
                                 predictions.append(line)
@@ -622,115 +730,89 @@ def generate_pattern(data):
                     line.is_fixed = False
 
 
-                    time_sleep = 0.5
+                    time_sleep = 10
+                       
+                            
+                    #zu weit weg darf nicht sein. sonst werden manche linien nicht mehr gesehen und die prediction wird schlicht falsch.
+                    predictions, average_lines = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist, distance_list=[1,5,10,15])
                     
-                    last_diff = None
 
-                    adapted_line = None
-                    average_line = None
+                    break_average_lines_loop = False
+                    if len(average_lines) > 0:
+                        checklist = [average_lines[0]]
+                    else:
+                        checklist = []
 
-                    for i in range(150):
-
-                        if adapted_line is not None:
-                            old_line = adapted_line.clone()
-                            print("adapted line", old_line)
-                        else:
-                            old_line = line
-                            
-                            
-                        #zu weit weg darf nicht sein. sonst werden manche linien nicht mehr gesehen und die prediction wird schlicht falsch.
-                        predictions, average_line, cluster_variance, num_clusters, adapted_line = gh.evaluate_ensemble(old_line, gh.pattern_trainer.max_dist, distance_list=[])
-                        if adapted_line is not None:
-                            print("DIFF", adapted_line.pos_diff(average_line))
-                            diff = adapted_line.pos_diff(old_line)
-                            diff_diff = adapted_line.pos_diff(average_line)
-                            last_diff = diff
-
-                            
-                        else:
-                            print("no adapted line")
-                            gh.lines[line_idx] = None
-                            
-                            adapted_line = None
-                            average_line = None
-                            line = None 
+                    for average_line in checklist:
+                        if break_average_lines_loop:
                             break
+                        print("remaining lines",len(try_later))
+                        # Find the index of the line in gh.lines and replace it
+
+                        clusters_new, average_lines_new = gh.evaluate_ensemble(average_line, gh.pattern_trainer.max_dist, distance_list=[1])
                         
-                      
-                        
-
-                        print("cluster_variance", cluster_variance)
-                        print("num_clusters", num_clusters)
-                        print("POS DIFF",i, diff_diff)
-                        #ToDo rewoke if variance is too high
-                        if adapted_line is not None and diff_diff < 5:
-                            # Find the index of the line in gh.lines and replace it
-
-                            predictions_new, average_line_new, cluster_variance_new, num_clusters_new, adapted_line_new = gh.evaluate_ensemble(old_line, gh.pattern_trainer.max_dist, distance_list=[1,5,10])
-                            print("ensemble test", num_clusters_new)
-                            time.sleep(3)
-
-                            if num_clusters_new == 1:
+                        #test_line = average_lines_new[0]
+                        for test_line in average_lines_new:
+                            if average_line.are_similar(test_line):
                                 print("accepted line")
                                 gh.lines[line_idx] = None
                                 #gh.lines[line_idx] = adapted_line.clone()
                                 #gh.lines[line_idx].immutable = True
-                                average_line.immutable = True
-                                average_line.is_fixed = True
-                                average_line.stopped = True
-                                gh.lines.append(average_line)
+                                test_line.immutable = True
+                                test_line.is_fixed = True
+                                test_line.stopped = True
+                                gh.lines.append(test_line)
                                 
                                 #adapted_line = None
                                 #average_line = None
                                 line = None
+                                break_average_lines_loop = True
+                                change_in_run = True
+                                break
+                            
+                                
                                 #line = None  # Update local variable for consistency
-                            
-
-                            clusters_list = predictions  # predictions contains clusters list from evaluate_ensemble
-                            predictions = []
-                            for cluster_number, cluster_lines in enumerate(predictions_new):
-                                for line in cluster_lines:
-                                    line.cluster_number = int(cluster_number)
-                                    predictions.append(line)
-                            if adapted_line is not None: 
-                                predictions.append(adapted_line) 
-                            info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
-                            info["ghost_lines"] = [line.to_JSON() for line in predictions]
-                            info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in adapted_line.used_ids]
-                            info["merged_lines"] = [line.to_JSON() for line in try_later]
-                            emit('prediction', info)
-                            time.sleep(time_sleep)
-
+                        
+                        if break_average_lines_loop:
                             break
+                    
                         
-                        gh.lines[line_idx] = None
-                            
-                            
-                            #line = None 
-                            
-
+                        
+                        
+                        #line = None 
                         
 
-                         
+                    
+
                         
+                    
                         clusters_list = predictions  # predictions contains clusters list from evaluate_ensemble
-                        predictions = []
+                        predictions_to_emit = []
                         
                         
                         for cluster_number, cluster_lines in enumerate(clusters_list):
+                            # Ensure cluster_lines is a list, not a single Line object
+                            if not isinstance(cluster_lines, list):
+                                cluster_lines = [cluster_lines]
                             for line in cluster_lines:
                                 line.cluster_number = int(cluster_number)
-                                predictions.append(line)
-                        if adapted_line is not None: 
-                            predictions.append(adapted_line) 
-                       
+                                predictions_to_emit.append(line)
                         
-                        info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
-                        info["ghost_lines"] = [line.to_JSON() for line in predictions]
-                        info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in adapted_line.used_ids]
                         
-                        emit('prediction', info)
-                        time.sleep(time_sleep)
+                        
+                    info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
+                    #info["ghost_lines"] = [line.to_JSON() for line in predictions_to_emit]
+                    info["average_line"] = [line.to_JSON() for line in average_lines]
+                    #info["comparison_line"] = [line.to_JSON() for line in average_lines_new]
+                    #info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in average_line.used_ids]
+                    
+                    emit('prediction', info)
+                    print("prediction emitted")
+                    #time.sleep(time_sleep)
+
+
+                    #wenn linie nicht angenommen wurde, wird sie gelöscht
+                    gh.lines[line_idx] = None
                         
                             
                            
@@ -849,6 +931,10 @@ def website_latent_inspector():
 @app.route("/train")
 def website_train():
     return render_template('train.html')
+
+@app.route("/draw")
+def website_draw():
+    return render_template('draw.html')
 
 @app.route("/webcam")
 def website_webcam():

@@ -40,6 +40,23 @@ class Line():
                 'y': x[i][1].item()
                 })
         return points
+
+    def are_similar(self, other, relaxation=1):
+        pos_diff = self.pos_diff(other) < 50 * (1 + relaxation)
+        latent_diff = self.latent_line_diff(other) < 1 * (1 + relaxation)
+        rot_diff_tmp = abs(self.rotation - other.rotation)
+        rotation_diff = min(rot_diff_tmp, 1 - rot_diff_tmp) < 0.1 * (1 + relaxation)
+        scale_diff_tmp = abs(self.scale - other.scale)
+        scale_diff = min(scale_diff_tmp, 1 - scale_diff_tmp) < 0.1 * (1 + relaxation)
+        if not pos_diff:
+            print("FAILED pos_diff", self.pos_diff(other))
+        if not latent_diff:
+            print("FAILED latent_diff", self.latent_line_diff(other))
+        if not rotation_diff:
+            print("FAILED rotation_diff", min(rot_diff_tmp, 1 - rot_diff_tmp))
+        if not scale_diff:
+            print("FAILED scale_diff", min(scale_diff_tmp, 1 - scale_diff_tmp))
+        return pos_diff and latent_diff and rotation_diff and scale_diff
     
     def diff(self, other):
         if self.position_type == "relative" or other.position_type == "relative":
@@ -79,6 +96,8 @@ class Line():
         return torch.dist(z1, z2, p=2)
     
     def pos_diff(self, other):
+        if self.position_type == "relative" or other.position_type == "relative":
+            print("RELATIVE POSITION compared")
         return math.sqrt(
             (self.position['x'] - other.position['x']) ** 2 +
             (self.position['y'] - other.position['y']) ** 2

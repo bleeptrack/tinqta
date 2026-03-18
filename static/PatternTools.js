@@ -34,8 +34,59 @@ export class PatternTools extends HTMLElement {
 			this.canvas.setConfig(config)
 			
 		})
-		
 
+		this.stampTool = new paper.Tool()
+		this.stampTool.onMouseUp = (event) => {
+			this.socket.emit("add:stamp", {"position": {"x": event.point.x, "y": event.point.y}, "name": this.shadow.getElementById("name").textContent, "correction": false})
+		}
+
+		this.stampCorrectionTool = new paper.Tool()
+		this.stampCorrectionTool.onMouseUp = (event) => {
+			this.socket.emit("add:stamp", {"position": {"x": event.point.x, "y": event.point.y}, "name": this.shadow.getElementById("name").textContent, "correction": true})
+		}
+
+		this.visualTool = new paper.Tool()
+		this.visualTool.onMouseDown = (event) => {
+			this.activeLine = new paper.Path()
+			this.activeLine.strokeColor = "black"
+			this.activeLine.strokeWidth = 3
+			this.activeLine.strokeCap = 'round'
+			this.activeLine.add(event.point)
+		}
+		this.visualTool.onMouseDrag = (event) => {
+			this.activeLine.add(event.point)
+		}
+		this.visualTool.onMouseUp = (event) => {
+			this.activeLine.simplify()
+			let processedLine = this.canvas.processLine(this.activeLine)
+			this.socket.emit("add:visual", {"line": processedLine, "name": this.shadow.getElementById("name").textContent, "correction": false})
+			this.activeLine = null
+		}
+
+		this.visualCorrectionTool = new paper.Tool()
+		this.visualCorrectionTool.onMouseDown = (event) => {
+			this.activeLine = new paper.Path()
+			this.activeLine.strokeColor = "black"
+			this.activeLine.strokeWidth = 3
+			this.activeLine.strokeCap = 'round'
+			this.activeLine.add(event.point)
+		}
+		this.visualCorrectionTool.onMouseDrag = (event) => {
+			this.activeLine.add(event.point)
+		}
+		this.visualCorrectionTool.onMouseUp = (event) => {
+			this.activeLine.simplify()
+			let processedLine = this.canvas.processLine(this.activeLine)
+			this.socket.emit("add:visual", {"line": processedLine, "name": this.shadow.getElementById("name").textContent, "correction": true})
+			this.activeLine = null
+		}
+		
+		
+		this.socket.on("init", (config) => {
+			console.log("config received", config)
+			this.canvas.setConfig(config)
+			
+		})
 
 		this.socket.on('toast', (data) => {
 			console.log(`MESSAGE: ${data.message}`)
@@ -105,6 +156,11 @@ export class PatternTools extends HTMLElement {
 			<div id="container">
 				<h1>Draw!</h1>
 				<div id="name" class="scribble input" placeholder="Enter your model name" contenteditable=true></div>
+				<button id="stamp">stamp</button>
+				<button id="stampCorrection">stamp correction</button>
+				<button id="visual">visual</button>
+				<button id="visualCorrection">visual correction</button>
+				<button id="draw">draw</button>
 				<div id="canvas-container">
 					<button id="undo" class="material-symbols-outlined scribble">undo</button>
 				</div>
@@ -118,7 +174,21 @@ export class PatternTools extends HTMLElement {
 		this.shadow.getElementById("undo").addEventListener("click", () => {
 			this.canvas.undo()
 		})
-		
+		this.shadow.getElementById("stamp").addEventListener("click", () => {
+			this.stampTool.activate()
+		})
+		this.shadow.getElementById("stampCorrection").addEventListener("click", () => {
+			this.stampCorrectionTool.activate()
+		})
+		this.shadow.getElementById("draw").addEventListener("click", () => {
+			this.basicTool.activate()
+		})
+		this.shadow.getElementById("visual").addEventListener("click", () => {
+			this.visualTool.activate()
+		})
+		this.shadow.getElementById("visualCorrection").addEventListener("click", () => {
+			this.visualCorrectionTool.activate()
+		})
 	}
 
 
@@ -127,6 +197,7 @@ export class PatternTools extends HTMLElement {
 		this.socket.emit("add:line", processedLine)
 		console.log("sent line", processedLine)
 	}
+	
 }
 
 customElements.define('pattern-tools', PatternTools);

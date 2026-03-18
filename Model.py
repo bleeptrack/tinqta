@@ -690,6 +690,9 @@ class PatternTrainer():
             self.max_dist = 150  # Default fallback for old datasets
             print(f"WARNING: max_dist not found in dataset, using default: {self.max_dist}")
         
+        # Track best validation loss across epochs (used for checkpointing)
+        self.best_val_loss = float('inf')
+        
         
 
 
@@ -720,6 +723,7 @@ class PatternTrainer():
             
             self.max_dist = checkpoint['max_dist']
             self.epoch = checkpoint['epoch']
+            self.best_val_loss = checkpoint.get('best_val_loss', float('inf'))
 
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
             # Add ReduceLROnPlateau scheduler when loading existing model
@@ -753,19 +757,21 @@ class PatternTrainer():
         self.max_dist = test_sample.max_dist
         self.epoch = 0
         self.validation_sample = sample
+        # Reset best val loss when starting from a fresh test sample
+        self.best_val_loss = float('inf')
 
         self.model = PatternEncoder(self.in_channels, self.hidden_channels, 1, self.out_channels)
         self.model = self.model.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)
         # Add ReduceLROnPlateau scheduler from the start
         self.scheduler = ReduceLROnPlateau(
             self.optimizer,
             mode='min',           # Minimize the loss
             factor=0.5,           # Reduce LR by 50% when plateau detected
-            patience=10,          # Wait 10 epochs before reducing
+            patience=3,          # Wait 10 epochs before reducing
             min_lr=1e-6,          # Don't go below this learning rate
-            threshold=0.005,     # Threshold for measuring improvement
+            threshold=0.01,     # Threshold for measuring improvement
             threshold_mode='rel'  # Relative threshold
         )
 
@@ -806,10 +812,13 @@ class PatternTrainer():
 
         #ToDo: num_graphs auch beim line training?
         running_loss /= len(self.loader)
+
+        val_loss = self.evaluate_validation()
         
         # Evaluate validation loss and step scheduler based on it
         if self.scheduler is not None:
-            val_loss = self.evaluate_validation()
+            
+
             if val_loss is not None:
                 self.scheduler.step(val_loss)
                 print("[VAL] Epoch:", self.epoch, "Train Loss:", running_loss, 
@@ -826,9 +835,10 @@ class PatternTrainer():
        
 
 
-        if self.epoch % 10 == 0:
+        if val_loss is not None and val_loss < self.best_val_loss:
+            self.best_val_loss = val_loss
             self.saveModel()
-            print("saving...", "Epoch:", self.epoch, "current loss:", running_loss)
+            print("saving...", "Epoch:", self.epoch, "val loss:", val_loss)
         
 
         self.epoch += 1
@@ -868,6 +878,7 @@ class PatternTrainer():
             'state_dict': self.model.state_dict(),
             'max_dist': self.max_dist,
             'epoch': self.epoch,
+            'best_val_loss': self.best_val_loss,
             'in_channels': self.in_channels,
             'hidden_channels': self.hidden_channels,
             'out_channels': self.out_channels
