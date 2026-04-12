@@ -1,3 +1,4 @@
+import os
 import os.path as osp
 from functools import reduce
 import math
@@ -775,6 +776,10 @@ class PatternTrainer():
             threshold_mode='rel'  # Relative threshold
         )
 
+        self.val_loss_for_file = []
+        self.training_loss_for_file = []
+        self.saving_epochs_for_file = []
+
     
     def trainModel(self, dataset, data_jitter=0):
         self.model.train()
@@ -786,6 +791,7 @@ class PatternTrainer():
        
 
         running_loss = 0
+        
 
 
         #for train_data in self.dataset:
@@ -808,12 +814,18 @@ class PatternTrainer():
 
             running_loss += loss.item()
             
+            
+            
 
 
         #ToDo: num_graphs auch beim line training?
         running_loss /= len(self.loader)
 
         val_loss = self.evaluate_validation()
+        self.val_loss_for_file.append(val_loss)
+        self.training_loss_for_file.append(running_loss)
+        
+ 
         
         # Evaluate validation loss and step scheduler based on it
         if self.scheduler is not None:
@@ -839,7 +851,24 @@ class PatternTrainer():
             self.best_val_loss = val_loss
             self.saveModel()
             print("saving...", "Epoch:", self.epoch, "val loss:", val_loss)
+            self.saving_epochs_for_file.append(True)
+        else:
+            self.saving_epochs_for_file.append(False)
         
+        # Write validation loss history to a deterministic file location.
+        import csv
+        val_loss_csv_path = osp.join(osp.dirname(osp.abspath(__file__)), "validation_loss_history.csv")
+        try:
+            with open(val_loss_csv_path, mode="w", newline='') as csvfile:
+                csvwriter = csv.writer(csvfile)
+                csvwriter.writerow(["epoch", "val_loss", "training_loss", "saving_epoch"])
+                for i, loss in enumerate(self.val_loss_for_file):
+                    csvwriter.writerow([i + 1, loss, self.training_loss_for_file[i], self.saving_epochs_for_file[i]])
+                csvfile.flush()
+                os.fsync(csvfile.fileno())
+            print("Wrote validation history to", val_loss_csv_path)
+        except OSError as e:
+            print("Failed to write validation history:", val_loss_csv_path, e)
 
         self.epoch += 1
 

@@ -430,14 +430,14 @@ def new_pattern(data):
         #        threshold = 5
 
         if i > 15:
-            data_jitter = min(0.02, (i - 15) * 0.02 / 10)  # Ramp over 10 epochs
+            data_jitter = min(0.01, (i - 15) * 0.01 / 10)  # Ramp over 10 epochs
         pt.trainModel(dataset, data_jitter=data_jitter)
         count += 1
 
          # Check if learning rate has reached minimum
         current_lr = pt.optimizer.param_groups[0]['lr']
         min_lr = pt.scheduler.min_lrs[0] if pt.scheduler is not None else 0
-        if current_lr <= min_lr:
+        if current_lr < min_lr:
             print(f"Stopping training: Learning rate reached minimum ({current_lr})")
             break
 
@@ -656,6 +656,8 @@ def generate_pattern(data):
         change_in_run = False
         backup_lines = []
 
+        second_stage_lines = []
+
         for i in range(1000):
 
             if len(all_line_lists) > 0:
@@ -761,7 +763,8 @@ def generate_pattern(data):
                                 test_line.immutable = True
                                 test_line.is_fixed = True
                                 test_line.stopped = True
-                                gh.lines.append(test_line)
+                                #gh.lines.append(test_line)
+                                second_stage_lines.append(test_line)
                                 
                                 #adapted_line = None
                                 #average_line = None
@@ -803,7 +806,7 @@ def generate_pattern(data):
                     info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                     #info["ghost_lines"] = [line.to_JSON() for line in predictions_to_emit]
                     info["average_line"] = [line.to_JSON() for line in average_lines]
-                    #info["comparison_line"] = [line.to_JSON() for line in average_lines_new]
+                    info["comparison_line"] = [line.to_JSON() for line in second_stage_lines]
                     #info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in average_line.used_ids]
                     
                     emit('prediction', info)
