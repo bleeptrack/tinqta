@@ -185,6 +185,7 @@ class GraphHandler:
 
     def calculate_original_lines(self):
         original_lines = self.line_trainer.dataset.original_data
+        print("original lines from dataset", self.line_trainer.name)
         for o in original_lines: 
             l = Line(o.x, o.scale, o.rotation, o.position)
             x, edge_index = l.create_line_graph()
@@ -193,7 +194,9 @@ class GraphHandler:
             self.original_lines.append(l)
         print("original lines", len(self.original_lines))
 
-    def add_missing_latent_vectors(self, line_trainer):
+    def add_missing_latent_vectors(self, line_trainer=None):
+        if line_trainer is None:
+            line_trainer = self.line_trainer
         for line in self.lines:
             if line_trainer.name not in line.latent_vectors or line.latent_vectors[line_trainer.name] is None:
                 x, edge_index = line.create_line_graph()
@@ -867,7 +870,7 @@ class GraphHandler:
         averaged_lines = []
         for cluster in clusters:
             center_position = cluster[0].position
-            averaged_latent = GraphHandler.average_latent_vectors(cluster, center_position, max_dist)
+            averaged_latent, _ = GraphHandler.average_latent_vectors(cluster, center_position, max_dist)
             averaged_line = self.decompose_node(averaged_latent)
             averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
             averaged_line.used_ids = used_ids
@@ -877,6 +880,77 @@ class GraphHandler:
 
         return (clusters, averaged_lines)
 
+    def evaluate_combinations(self, line, max_dist):
+        predictions = []
+        data_list = self.sample_combinations(line, max_dist)
+        if data_list is None:
+            return ([], [], None)
+        averaged_line = None
+
+        max_errors = []
+
+        # for data in data_list:
+        #     z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+        #     if z is None:
+        #         continue
+        #     test_line = self.decompose_node(z)
+        #     test_line.update_position_from_reference(data.center_point, max_dist=max_dist)
+        #     predictions.append(test_line)
+            
+        # averaged_line, max_error = GraphHandler.average_latent_vectors(predictions, line.position, max_dist)
+        # averaged_line = self.decompose_node(averaged_line)
+        # averaged_line.update_position_from_reference(line.position, max_dist=max_dist)
+
+        for data in data_list:
+            z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+            if z is None:
+                continue
+            test_line = self.decompose_node(z)
+            test_line.update_position_from_reference(data.center_point, max_dist=max_dist)
+            predictions.append(test_line)
+
+        # Handle case when no predictions were made
+        if not predictions:
+            print("no predictions")
+            return ([], [])
+
+        clusters = GraphHandler.find_position_clusters(predictions, 10)
+        #clusters = GraphHandler.find_latent_clusters(predictions, 0.1)
+        #clusters = self.find_position_clusters_by_closest_original_line(predictions)
+
+        # Remove all clusters that have 3 or less items
+        #clusters = {k: v for k, v in clusters.items() if len(v) > 3}
+        
+        # Handle case when no clusters were found - treat all predictions as single cluster
+        if not clusters:
+            print("no clusters")
+            center_position = line.position
+            averaged_latent = GraphHandler.average_latent_vectors(predictions, center_position, max_dist)
+            averaged_line = self.decompose_node(averaged_latent)
+            averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
+            return ([predictions], [averaged_line]) 
+
+        
+        
+        
+        # Convert clusters dict to list
+        clusters = list(clusters.values())
+        # Sort clusters by size (largest first)
+        clusters.sort(key=len, reverse=True)
+        
+        # Calculate averaged line for each cluster
+        averaged_lines = []
+        for cluster in clusters:
+            center_position = cluster[0].position
+            averaged_latent, max_error = GraphHandler.average_latent_vectors(cluster, center_position, max_dist)
+            max_errors.append(max_error)
+            averaged_line = self.decompose_node(averaged_latent)
+            averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
+            averaged_lines.append(averaged_line)
+        
+        
+
+        return (clusters, averaged_lines, max_errors)
 
     def calculate_flow_grid(self, grid_resolution=50):
         max_dist = self.pattern_trainer.max_dist
@@ -1116,7 +1190,7 @@ class GraphHandler:
 
         merged_lines = []
         for id_str, lines in id_to_line.items():
-            averaged_latent = GraphHandler.average_latent_vectors(lines, lines[0].position, max_dist)
+            averaged_latent, _ = GraphHandler.average_latent_vectors(lines, lines[0].position, max_dist)
             line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
             line.update_position_from_reference(lines[0].position, max_dist=max_dist)
             if any(line.is_fixed for line in lines):
@@ -1737,6 +1811,65 @@ class GraphHandler:
             data.ground_truth_id = ground_truth_id
             
             return data
+
+    def sample_combinations(self, line, max_dist):
+        return GraphHandler._sample_combinations(self.lines, line.position, self.pattern_trainer.name, max_dist)
+
+    @staticmethod 
+    def _sample_combinations(lines, reference_pos, latent_name, max_dist):
+        if max_dist is None:
+            raise ValueError("max_dist is required for sample_pattern_from_position")
+        
+        # Calculate distances from reference_pos to all lines in self.lines
+        ref_point = torch.tensor([reference_pos['x'], reference_pos['y']], dtype=torch.float)
+
+        check_fixed = any(line.is_fixed for line in lines)
+        
+        #ToDo: vereinfachen? und auf batch umbauen im besten fall
+        distances = []
+        line_indices = []
+        for i, line in enumerate(lines):
+            if line is None:
+                continue
+            if check_fixed and line.is_fixed is False:
+                continue
+            line_pos = torch.tensor([line.position['x'], line.position['y']], dtype=torch.float)
+            dist = torch.norm(ref_point - line_pos)
+            distances.append(dist)
+            line_indices.append(i)
+        
+        distances = torch.tensor(distances)
+        line_indices = torch.tensor(line_indices)
+        
+        # Filter lines within max_dist proximity
+        within_proximity = distances < max_dist
+        nearby_distances = distances[within_proximity]
+        nearby_indices = line_indices[within_proximity]
+        
+        if len(nearby_indices) == 0:
+            return None
+
+        sorted_distances, sort_order = torch.sort(nearby_distances)
+        sorted_indices = nearby_indices[sort_order]
+        idx_list = sorted_indices.tolist()
+
+        # Growing context: nearest first, then prefixes [i0], [i0,i1], … (sorted by distance)
+        data_list = []
+        for k in range(1, len(idx_list) + 1):
+            kept_ids = idx_list[:k]
+            data = GraphHandler._create_pattern_graph(
+                lines,
+                None,
+                kept_ids,
+                latent_name,
+                max_dist=max_dist,
+                dropped_out_ids=[],
+                target_pos=reference_pos,
+            )
+            data.used_ids = kept_ids
+            data.ground_truth_id = None
+            data_list.append(data)
+        return data_list
     
     
     def save_pattern_training_data(self, latent_name=None, name=None):
@@ -1872,7 +2005,7 @@ class GraphHandler:
                     if latent_label == -1 or len(latent_lines) == 1:
                         final_lines.extend(latent_lines)
                     else:
-                        averaged_latent = GraphHandler.average_latent_vectors(latent_lines, latent_lines[0].position, max_dist)
+                        averaged_latent, _ = GraphHandler.average_latent_vectors(latent_lines, latent_lines[0].position, max_dist)
                         line = GraphHandler.decompose_node_hidden_state(averaged_latent, self.line_trainer)
                         line.update_position_from_reference(latent_lines[0].position, max_dist=max_dist)
                         if any(line.is_fixed for line in latent_lines):
@@ -1916,7 +2049,11 @@ class GraphHandler:
         for line in lines:
             z = line.get_pattern_z(center_position=center_position, max_dist=max_dist)
             zs.append(z)
-        return torch.mean(torch.stack(zs), dim=0)
+        z_stack = torch.stack(zs)
+        averaged_z = torch.mean(z_stack, dim=0)
+        max_error = torch.max(torch.abs(z_stack - averaged_z))
+        print("MAX ERROR", max_error)
+        return (averaged_z, max_error)
 
     @staticmethod
     def compute_cluster_variance(lines, max_dist):

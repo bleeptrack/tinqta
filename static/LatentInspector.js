@@ -363,7 +363,7 @@ export class LatentInspector extends HTMLElement {
 
 
 	connectedCallback() {
-        this.socket.emit("inspect latent", {name: "grid"});
+        this.socket.emit("inspect latent", {name: "swirls"});
 		const canvas = this.shadow.getElementById("renderCanvas"); // Get the canvas element
 		const engine = new Engine(canvas, true); // Generate the BABYLON 3D engine
 

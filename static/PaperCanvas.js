@@ -82,27 +82,7 @@ export class PaperCanvas extends HTMLElement {
 
 		this.shadow.getElementById('downloadSvg').addEventListener('click', () => {
 			
-			// Get the SVG from Paper.js project
-			const svg = paper.project.exportSVG({ asString: true });
-
-			// Create a Blob with the SVG content
-			const blob = new Blob([svg], { type: 'image/svg+xml' });
-
-			// Create a temporary URL for the Blob
-			const url = URL.createObjectURL(blob);
-
-			// Create a temporary anchor element
-			const downloadLink = document.createElement('a');
-			downloadLink.href = url;
-			downloadLink.download = 'drawing.svg';
-
-			// Append to body, trigger click, and remove
-			document.body.appendChild(downloadLink);
-			downloadLink.click();
-			document.body.removeChild(downloadLink);
-
-			// Revoke the temporary URL
-			URL.revokeObjectURL(url);
+			this.downloadSVG()
 		})
 
 		this.shadow.getElementById('downloadJSON').addEventListener('click', () => {
@@ -123,6 +103,30 @@ export class PaperCanvas extends HTMLElement {
 
 	}
 
+	downloadSVG(){
+		// Get the SVG from Paper.js project
+		const svg = paper.project.exportSVG({ asString: true });
+
+		// Create a Blob with the SVG content
+		const blob = new Blob([svg], { type: 'image/svg+xml' });
+
+		// Create a temporary URL for the Blob
+		const url = URL.createObjectURL(blob);
+
+		// Create a temporary anchor element
+		const downloadLink = document.createElement('a');
+		downloadLink.href = url;
+		downloadLink.download = 'drawing.svg';
+
+		// Append to body, trigger click, and remove
+		document.body.appendChild(downloadLink);
+		downloadLink.click();
+		document.body.removeChild(downloadLink);
+
+		// Revoke the temporary URL
+		URL.revokeObjectURL(url);
+	}
+
 	clear(){
 		paper.project.layers["lines"].removeChildren()
 		
@@ -134,7 +138,9 @@ export class PaperCanvas extends HTMLElement {
 		}else{
 			paper.view.center = paper.project.activeLayer.bounds.center
 		}
-		paper.project.layers["background"].position = paper.view.center
+		if(paper.project.layers["background"]){
+			paper.project.layers["background"].position = paper.view.center
+		}
 	}
 
 	setDrawingGuides(){
@@ -223,7 +229,7 @@ export class PaperCanvas extends HTMLElement {
 		
 		
 		let tool = new Tool()
-		const drawMinDistance = 6
+		const drawMinDistance = 2
 		tool.minDistance = drawMinDistance
 
 		var path

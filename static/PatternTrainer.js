@@ -52,6 +52,15 @@ export class PatternTrainer extends HTMLElement {
 		});
 
 	this.socket.on('prediction', (data) => {
+		if(paper.project.layers["sample_nodes"]){
+			paper.project.layers["sample_nodes"].remove()
+		}
+		if(paper.project.layers["ground_truth"]){
+			paper.project.layers["ground_truth"].remove()
+		}
+		if(paper.project.layers["prediction"]){
+			paper.project.layers["prediction"].remove()
+		}
 		
 		this.canvas.clear()
 		let baseLines = []
@@ -79,7 +88,7 @@ export class PatternTrainer extends HTMLElement {
 					color = "red"
 				}
 				let l = this.canvas.drawLine(line, color, paper.project.layers["lines"])
-				l.strokeWidth = 20
+				l.strokeWidth = 7
 				l.opacity = 0.2
 				l.strokeCap = "round"
 				baseLines.push(l)
@@ -107,14 +116,18 @@ export class PatternTrainer extends HTMLElement {
 		
 		// Sample visualization - new proper naming
 		if(data["sample_nodes"]){
+			let layer = new paper.Layer({name: "sample_nodes"})
 			for(let line of data["sample_nodes"]){
-				let l = this.canvas.drawLine(line, "blue")
+				let l = this.canvas.drawLine(line, "blue", false, layer)
 				l.opacity = 0.3
 				l.strokeWidth = 20
 				l.strokeCap = "round"
+				
 			}
+			
 		}
 		if(data["dropped_out_nodes"]){
+			/*
 			for(let pos of data["dropped_out_nodes"]){
 				// Draw a small circle at the dropped-out position
 				let c = new Path.Circle(pos, 15)
@@ -123,17 +136,21 @@ export class PatternTrainer extends HTMLElement {
 				c.strokeColor = "cyan"
 				c.strokeWidth = 2
 			}
+			*/
 		}
 		if(data["target_pos"]){
+			/*
 			for(let pos of data["target_pos"]){
 				let c = new Path.Circle(pos, 15)
 				c.fillColor = "green"
 				c.opacity = 0.5
 			}
+				*/
 		}
 		if(data["ground_truth"]){
+			let layer = new paper.Layer({name: "ground_truth"})
 			for(let line of data["ground_truth"]){
-				let l = this.canvas.drawLine(line, "yellow")
+				let l = this.canvas.drawLine(line, "yellow", false, layer)
 				l.opacity = 0.5
 				l.strokeWidth = 20
 				l.strokeCap = "round"
@@ -187,12 +204,15 @@ export class PatternTrainer extends HTMLElement {
 		
 		// Old keys for backward compatibility (deprecated)
 		if(data["untouched_lines"]){
+			let layer = new paper.Layer({name: "untouched_lines"})
 			for(let line of data["untouched_lines"]){
 				let l = this.canvas.drawLine(line, "red")
 				l.opacity = 0.3
 				l.strokeWidth = 20
 				l.strokeCap = "round"
+				layer.add(l)
 			}
+			paper.project.addLayer(layer)
 		}
 		if(data["not_matched"]){
 			for(let line of data["not_matched"]){
@@ -202,19 +222,20 @@ export class PatternTrainer extends HTMLElement {
 				l.strokeCap = "round"
 			}
 		}
-		if(data["average_line"]){
-			for(let line of data["average_line"]){
-				let l = this.canvas.drawLine(line, "green")
-				l.opacity = 0.5
-				l.strokeWidth = 30
+		
+		if(data["comparison_line"]){
+			for(let line of data["comparison_line"]){
+				let l = this.canvas.drawLine(line, "blue")
+				l.opacity = 0.2
+				l.strokeWidth = 7
 				l.strokeCap = "round"
 			}
 		}
-		if(data["comparison_line"]){
-			for(let line of data["comparison_line"]){
-				let l = this.canvas.drawLine(line, "red")
+		if(data["average_line"]){
+			for(let line of data["average_line"]){
+				let l = this.canvas.drawLine(line, "green")
 				l.opacity = 1
-				l.strokeWidth = 15
+				l.strokeWidth = 7
 				l.strokeCap = "round"
 			}
 		}
@@ -222,14 +243,15 @@ export class PatternTrainer extends HTMLElement {
 			for(let line of data["diffused_lines"]){
 				let l = this.canvas.drawLine(line, "black")
 				l.opacity = 1
-				l.strokeWidth = 4
+				l.strokeWidth = 7
 				l.strokeCap = "round"
 			}
 		}
 		if(data["prediction"]){
+			let layer = new paper.Layer({name: "prediction"})
 			if(Array.isArray(data["prediction"])){
 				for(let line of data["prediction"]){
-					let l = this.canvas.drawLine(line, "red")
+					let l = this.canvas.drawLine(line, "red", false, layer)
 					l.opacity = 0.5
 					l.strokeWidth = 20
 					l.strokeCap = "round"
@@ -254,7 +276,7 @@ export class PatternTrainer extends HTMLElement {
 					//l.translate(paper.view.center)
 				}
 			}else{
-				let l = this.canvas.drawLine(data["prediction"], "red")
+				let l = this.canvas.drawLine(data["prediction"], "red", false, layer)
 				l.opacity = 0.5
 				l.strokeWidth = 20
 				l.strokeCap = "round"
@@ -263,6 +285,11 @@ export class PatternTrainer extends HTMLElement {
 		}
 		
 		this.canvas.centerDrawing()
+
+		paper.project.layers["background"]?.remove()
+		paper.project.layers["guides"]?.remove()
+
+		//this.canvas.downloadSVG()
 		//this.drawArt(data)
 	});
 		

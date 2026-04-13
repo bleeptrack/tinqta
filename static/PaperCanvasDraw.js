@@ -16,14 +16,21 @@ export class PaperCanvasDraw extends HTMLElement {
 		container.innerHTML = `
 			<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
 			<style>
-				
-				canvas[resize] {
-					width: 960px;
-					height: 540px;
-				}	
+				:host {
+					display: block;
+					width: 100%;
+					height: 100%;
+					min-height: 0;
+					box-sizing: border-box;
+				}
+				#paperCanvas {
+					display: block;
+					width: 100%;
+					height: 100%;
+				}
 			</style>
 			
-			<canvas id="paperCanvas" resize="true"></canvas>
+			<canvas id="paperCanvas"></canvas>
 			
 		`;
 
@@ -39,9 +46,28 @@ export class PaperCanvasDraw extends HTMLElement {
 
 
 	connectedCallback() {
-		paper.install(window)
-		let canvas = this.shadow.getElementById('paperCanvas');
+		paper.install(window);
+		const canvas = this.shadow.getElementById('paperCanvas');
 		paper.setup(canvas);
+
+		this._syncViewSize = () => {
+			const w = canvas.clientWidth;
+			const h = canvas.clientHeight;
+			if (w > 0 && h > 0 && paper.view) {
+				paper.view.setViewSize(w, h);
+			}
+		};
+
+		this._resizeObserver = new ResizeObserver(() => this._syncViewSize());
+		this._resizeObserver.observe(canvas);
+		requestAnimationFrame(() => this._syncViewSize());
+	}
+
+	disconnectedCallback() {
+		if (this._resizeObserver) {
+			this._resizeObserver.disconnect();
+			this._resizeObserver = null;
+		}
 	}
 
 	
