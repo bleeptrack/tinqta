@@ -48,15 +48,20 @@ class Line():
         rotation_diff = min(rot_diff_tmp, 1 - rot_diff_tmp) < 0.1 * (1 + relaxation)
         scale_diff_tmp = abs(self.scale - other.scale)
         scale_diff = min(scale_diff_tmp, 1 - scale_diff_tmp) < 0.1 * (1 + relaxation)
-        if not pos_diff:
-            print("FAILED pos_diff", self.pos_diff(other))
+
+        pos_diff_value = self.pos_diff(other)
+        latent_diff_value = self.latent_line_diff(other)
+        rotation_diff_value = min(rot_diff_tmp, 1 - rot_diff_tmp)
+        scale_diff_value = min(scale_diff_tmp, 1 - scale_diff_tmp)
+        if not pos_diff:    
+            print("FAILED pos_diff", pos_diff_value)
         if not latent_diff:
-            print("FAILED latent_diff", self.latent_line_diff(other))
+            print("FAILED latent_diff", latent_diff_value)
         if not rotation_diff:
-            print("FAILED rotation_diff", min(rot_diff_tmp, 1 - rot_diff_tmp))
+            print("FAILED rotation_diff", rotation_diff_value)
         if not scale_diff:
-            print("FAILED scale_diff", min(scale_diff_tmp, 1 - scale_diff_tmp))
-        return pos_diff and latent_diff and rotation_diff and scale_diff
+            print("FAILED scale_diff", scale_diff_value)
+        return (pos_diff and latent_diff and rotation_diff and scale_diff, pos_diff_value + latent_diff_value + rotation_diff_value + scale_diff_value)
     
     def diff(self, other):
         if self.position_type == "relative" or other.position_type == "relative":

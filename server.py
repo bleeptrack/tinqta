@@ -749,7 +749,8 @@ def generate_pattern(data):
                             continue
                         average_line = average_lines[0]
                     
-                        if average_line is not None and average_line.are_similar(line):
+                        are_similar, _ = average_line.are_similar(line)
+                        if average_line is not None and are_similar:
                             
                             line.immutable = True
                             line.stopped = True
@@ -782,39 +783,32 @@ def generate_pattern(data):
                     line.is_fixed = False
 
 
-                    clusters, averaged_lines, max_errors, predictions = gh.evaluate_combinations(line, gh.pattern_trainer.max_dist)
+                    clusters, predictions = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist, distance_list=[0,1,2,5,10,20,30,40,50])
 
-                    ref_line = random.choice(predictions)
+                    
             
 
                     
                     if len(predictions) <= 0:
                         gh.lines[line_idx] = None
                         continue
-                    vote = [ref_line.are_similar(p) for p in predictions]
-                    print("VOTE", vote.count(True)/len(vote), "of", len(vote))
+                   
+                    best_prediction = None
+                    best_distance = float("inf")
+                    for prediction in predictions:
+                        similar_original, distance, closest_idx= gh.get_closest_original_line(prediction)
+                        #distance = similar_original.latent_line_diff(prediction)
+                        print("distance", distance)
+                        if distance < best_distance and distance < 0.25:
+                            best_prediction = prediction
+                            best_distance = distance
 
-                    
-                    center_position = ref_line.position
-                    positive_predictions = [pred for pred, is_positive in zip(predictions, vote) if is_positive]
-                    if len(positive_predictions) <= 0:
-                        gh.lines[line_idx] = None
-                        continue
-                    averaged_latent, _ = GraphHandler.average_latent_vectors(positive_predictions, center_position, gh.pattern_trainer.max_dist)
-                    averaged_line = gh.decompose_node(averaged_latent)
-                    averaged_line.update_position_from_reference(center_position, max_dist=gh.pattern_trainer.max_dist)
-
-                    if vote.count(True)/len(vote) > 0.5:
-                        
-
-                        
-
-                        averaged_line.immutable = True
-                        averaged_line.stopped = True
-                        averaged_line.is_fixed = True
-
-                        gh.lines.append(averaged_line)
-                        print("ACCEPTED")
+                    if best_prediction is not None:
+                        best_prediction.immutable = True
+                        best_prediction.stopped = True
+                        best_prediction.is_fixed = True
+                        gh.lines.append(best_prediction)
+                        print(f"ACCEPTED (distance: {best_distance})")
 
                     
 
@@ -828,7 +822,7 @@ def generate_pattern(data):
                     #info["ghost_lines"] = [line.to_JSON() for line in predictions_to_emit]
                     info["average_line"] = [p.to_JSON() for p in predictions]
                    
-                    info["comparison_line"] = [averaged_line.to_JSON()]
+                    info["comparison_line"] = [best_prediction.to_JSON()] if best_prediction is not None else []
                     #info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in average_line.used_ids]
                     
                     emit('prediction', info)
