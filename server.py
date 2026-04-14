@@ -781,38 +781,62 @@ def generate_pattern(data):
                     line.stopped = False
                     line.is_fixed = False
 
-                    data_list, predictions, averaged_line, max_error = gh.evaluate_combinations(line, gh.pattern_trainer.max_dist)
-                    print("combinations", len(data_list), [data.used_ids for data in data_list])
-                    if len(predictions) <= 0:
-                        continue
-                    # Predictions are already absolute (see evaluate_combinations: center_point per sample).
-                    # Calling update_position_from_reference again would reset absolute coords to line.position
-                    # and falsely align every ghost with the candidate line while average_line stays at the real mean.
-                    second_stage_lines = predictions
 
-                    if max_error < 1:
+                    clusters, averaged_lines, max_errors, predictions = gh.evaluate_combinations(line, gh.pattern_trainer.max_dist)
+
+                    ref_line = random.choice(predictions)
+            
+
+                    
+                    if len(predictions) <= 0:
+                        gh.lines[line_idx] = None
+                        continue
+                    vote = [ref_line.are_similar(p) for p in predictions]
+                    print("VOTE", vote.count(True)/len(vote), "of", len(vote))
+
+                    
+                    center_position = ref_line.position
+                    positive_predictions = [pred for pred, is_positive in zip(predictions, vote) if is_positive]
+                    if len(positive_predictions) <= 0:
+                        gh.lines[line_idx] = None
+                        continue
+                    averaged_latent, _ = GraphHandler.average_latent_vectors(positive_predictions, center_position, gh.pattern_trainer.max_dist)
+                    averaged_line = gh.decompose_node(averaged_latent)
+                    averaged_line.update_position_from_reference(center_position, max_dist=gh.pattern_trainer.max_dist)
+
+                    if vote.count(True)/len(vote) > 0.5:
+                        
+
+                        
+
                         averaged_line.immutable = True
                         averaged_line.stopped = True
                         averaged_line.is_fixed = True
+
                         gh.lines.append(averaged_line)
                         print("ACCEPTED")
 
-                        
-                        
+                    
+
+                    
+                    
+
+                    
+                    
                         
                     info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                     #info["ghost_lines"] = [line.to_JSON() for line in predictions_to_emit]
-                    info["average_line"] = [averaged_line.to_JSON()]
-                    info["comparison_line"] = [line.to_JSON() for line in second_stage_lines]
+                    info["average_line"] = [p.to_JSON() for p in predictions]
+                   
+                    info["comparison_line"] = [averaged_line.to_JSON()]
                     #info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in average_line.used_ids]
                     
                     emit('prediction', info)
                     print("prediction emitted")
-                    #time.sleep(time_sleep)
+                    #time.sleep(3)
 
-
-                    #wenn linie nicht angenommen wurde, wird sie gelöscht
                     gh.lines[line_idx] = None
+                    
 
                     time.sleep(3)
                         

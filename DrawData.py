@@ -884,7 +884,7 @@ class GraphHandler:
         predictions = []
         data_list = self.sample_combinations(line, max_dist)
         if data_list is None:
-            return ([], [], None)
+            return ([], [], None, [])
         averaged_line = None
 
         max_errors = []
@@ -921,14 +921,12 @@ class GraphHandler:
         # Remove all clusters that have 3 or less items
         #clusters = {k: v for k, v in clusters.items() if len(v) > 3}
         
-        # Handle case when no clusters were found - treat all predictions as single cluster
-        if not clusters:
-            print("no clusters")
-            center_position = line.position
-            averaged_latent = GraphHandler.average_latent_vectors(predictions, center_position, max_dist)
-            averaged_line = self.decompose_node(averaged_latent)
-            averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
-            return ([predictions], [averaged_line]) 
+        # Handle case when no clusters were found 
+        
+        
+        #if not clusters:
+        #    print("no clusters")
+        #    return ([], [], [], []) 
 
         
         
@@ -942,15 +940,15 @@ class GraphHandler:
         averaged_lines = []
         for cluster in clusters:
             center_position = cluster[0].position
-            averaged_latent, max_error = GraphHandler.average_latent_vectors(cluster, center_position, max_dist)
-            max_errors.append(max_error)
+            averaged_latent, _ = GraphHandler.average_latent_vectors(cluster, center_position, max_dist)
+            max_errors.append(len(cluster))
             averaged_line = self.decompose_node(averaged_latent)
             averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
             averaged_lines.append(averaged_line)
         
         
 
-        return (clusters, averaged_lines, max_errors)
+        return (clusters, averaged_lines, max_errors, predictions)
 
     def calculate_flow_grid(self, grid_resolution=50):
         max_dist = self.pattern_trainer.max_dist
