@@ -851,12 +851,8 @@ class GraphHandler:
         # Handle case when no clusters were found - treat all predictions as single cluster
         if not clusters:
             print("no clusters")
-            center_position = line.position
-            averaged_latent = GraphHandler.average_latent_vectors(predictions, center_position, max_dist)
-            averaged_line = self.decompose_node(averaged_latent)
-            averaged_line.update_position_from_reference(center_position, max_dist=max_dist)
-            averaged_line.used_ids = used_ids
-            return ([predictions], [averaged_line]) 
+            
+            return ([], []) 
 
         
         
@@ -2050,7 +2046,6 @@ class GraphHandler:
         z_stack = torch.stack(zs)
         averaged_z = torch.mean(z_stack, dim=0)
         max_error = torch.max(torch.abs(z_stack - averaged_z))
-        print("MAX ERROR", max_error)
         return (averaged_z, max_error)
 
     @staticmethod

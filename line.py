@@ -41,26 +41,24 @@ class Line():
                 })
         return points
 
-    def are_similar(self, other, relaxation=1):
-        pos_diff = self.pos_diff(other) < 50 * (1 + relaxation)
+    def are_similar(self, other, relaxation=0):
+        pos_diff = self.pos_diff(other) < 30 * (1 + relaxation)
         latent_diff = self.latent_line_diff(other) < 1 * (1 + relaxation)
         rot_diff_tmp = abs(self.rotation - other.rotation)
         rotation_diff = min(rot_diff_tmp, 1 - rot_diff_tmp) < 0.1 * (1 + relaxation)
         scale_diff_tmp = abs(self.scale - other.scale)
-        scale_diff = min(scale_diff_tmp, 1 - scale_diff_tmp) < 0.1 * (1 + relaxation)
+        scale_diff = min(scale_diff_tmp, 1 - scale_diff_tmp) < 0.15 * (1 + relaxation)
 
         pos_diff_value = self.pos_diff(other)
         latent_diff_value = self.latent_line_diff(other)
         rotation_diff_value = min(rot_diff_tmp, 1 - rot_diff_tmp)
         scale_diff_value = min(scale_diff_tmp, 1 - scale_diff_tmp)
-        if not pos_diff:    
-            print("FAILED pos_diff", pos_diff_value)
-        if not latent_diff:
-            print("FAILED latent_diff", latent_diff_value)
-        if not rotation_diff:
-            print("FAILED rotation_diff", rotation_diff_value)
-        if not scale_diff:
-            print("FAILED scale_diff", scale_diff_value)
+        print("_______________________")
+        print(f"{'✓' if pos_diff else '✗'} pos_diff", pos_diff_value)
+        print(f"{'✓' if latent_diff else '✗'} latent_diff", latent_diff_value)
+        print(f"{'✓' if rotation_diff else '✗'} rotation_diff", rotation_diff_value)
+        print(f"{'✓' if scale_diff else '✗'} scale_diff", scale_diff_value)
+        print("_______________________")
         return (pos_diff and latent_diff and rotation_diff and scale_diff, pos_diff_value + latent_diff_value + rotation_diff_value + scale_diff_value)
     
     def diff(self, other):

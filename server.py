@@ -705,13 +705,16 @@ def generate_pattern(data):
         gen_state = "init"
         change_in_run = False
         backup_lines = []
+        bonus_lines = []
+        check_unknown = False
+        last_run = 0
 
         second_stage_lines = []
 
         for i in range(1000):
 
             if len(all_line_lists) > 0:
-                try_later.extend([line for line in gh.lines if not line.immutable])
+                #try_later.extend([line for line in gh.lines if not line.immutable])
                 gh.lines = [line for line in gh.lines if getattr(line, "immutable", False)]
                 gh.lines.extend(all_line_lists.pop(0))
                 if len(all_line_lists) == 0:
@@ -722,13 +725,25 @@ def generate_pattern(data):
                 if len(try_later) > 0:
                     gh.lines = [line for line in gh.lines if line is not None]
                     choice = random.choice(try_later)
+                    #backup_lines.append(choice.clone())
                     try_later.remove(choice)
-                    backup_lines.append(choice.clone())
+                    #backup_lines.append(choice.clone())
                     gh.lines.append(choice.clone())
                 else:
-                    if change_in_run:
+                    if len(backup_lines) > 0:
                         try_later = [line.clone() for line in backup_lines]
-                    else:    
+                        backup_lines = []
+
+                        print("check lastrun", last_run, len(try_later))
+                        time.sleep(3)
+                        if last_run == len(try_later):
+                            check_unknown = True
+                            print("CHECK UNKNOWN ENTERED")
+                            
+                        last_run = len(try_later)
+                        
+                    else:
+                        print("no backup lines")
                         exit()
 
             for line in [l for l in gh.lines if l is not None and not getattr(l, "immutable", False)]:
@@ -748,18 +763,25 @@ def generate_pattern(data):
                         if len(average_lines) <= 0:
                             continue
                         average_line = average_lines[0]
+
+                        test, _ = average_line.are_similar(line, relaxation=3)
+                        print("test", test)
                     
-                        are_similar, _ = average_line.are_similar(line)
-                        if average_line is not None and are_similar:
+                        are_similar, _ = average_line.are_similar(line, relaxation=0)
+                        if average_line is None or are_similar:
                             
                             line.immutable = True
                             line.stopped = True
                             line.is_fixed = True
                         else:
+                            
+                            if test:
+                                #bonus_lines.append(line)
+                                #print("BONUS LINES", len(bonus_lines))
 
-                            try_later.append(line)
-                            line.stopped = True
-                            line.is_fixed = True
+                                try_later.append(line)
+                                line.stopped = True
+                                line.is_fixed = True
                             
 
                         clusters_list = predictions  # predictions contains clusters list from evaluate_ensemble
@@ -775,15 +797,17 @@ def generate_pattern(data):
                             predictions.append(average_line) 
                         info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                         info["ghost_lines"] = [line.to_JSON() for line in predictions]
+                        info["average_line"] = [b.to_JSON() for b in try_later]
                         emit('prediction', info)
-                        #time.sleep(time_sleep)
+                        #time.sleep(1)
+                        
 
                 if gen_state == "weave":
                     line.stopped = False
                     line.is_fixed = False
 
-
-                    clusters, predictions = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist, distance_list=[0,1,2,5,10,20,30,40,50])
+                    r = random.random()/10
+                    clusters, predictions = gh.evaluate_ensemble(line, gh.pattern_trainer.max_dist, distance_list=[0,0.1+r,0.2+r,0.3+r,0.4+r,0.5+r,1+r])
 
                     
             
@@ -792,23 +816,70 @@ def generate_pattern(data):
                     if len(predictions) <= 0:
                         gh.lines[line_idx] = None
                         continue
-                   
-                    best_prediction = None
-                    best_distance = float("inf")
-                    for prediction in predictions:
-                        similar_original, distance, closest_idx= gh.get_closest_original_line(prediction)
-                        #distance = similar_original.latent_line_diff(prediction)
-                        print("distance", distance)
-                        if distance < best_distance and distance < 0.25:
-                            best_prediction = prediction
-                            best_distance = distance
 
-                    if best_prediction is not None:
-                        best_prediction.immutable = True
-                        best_prediction.stopped = True
-                        best_prediction.is_fixed = True
-                        gh.lines.append(best_prediction)
-                        print(f"ACCEPTED (distance: {best_distance})")
+                    max_distance = 0.7
+                    ranked_predictions = []
+                    for prediction in predictions:
+                        similar_original, distance, closest_idx = gh.get_closest_original_line(prediction)
+                        distance_value = distance.item() if isinstance(distance, torch.Tensor) else float(distance)
+                        if distance_value <= max_distance:
+                            ranked_predictions.append((prediction, distance_value))
+
+                    ranked_predictions.sort(key=lambda item: item[1])
+                    info["average_line"] = []
+                    if len(ranked_predictions) > 0:
+                        best_prediction = ranked_predictions[0][0]
+
+                        print("diff", best_prediction.latent_line_diff(line))
+                        print("distance", distance_value)
+                        print("lines lieft", len(try_later))
+
+                        if best_prediction.latent_line_diff(line) > 1:
+
+                            if check_unknown:
+                                if distance_value < 0.33:
+                                    best_prediction.immutable = True
+                                    best_prediction.stopped = True
+                                    best_prediction.is_fixed = True
+                                    gh.lines.append(best_prediction)
+                                info["average_line"] = [best_prediction.to_JSON()]
+                                print("CHECK UNKNOWN", distance_value)
+                            else:
+                                backup_lines.append(line.clone())
+
+                        else:
+
+                            line.immutable = True
+                            line.stopped = True
+                            line.is_fixed = True
+                            gh.lines.append(line.clone())
+                            info["average_line"] = [line.to_JSON()]
+                        
+                        info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
+                        #info["ghost_lines"] = [line.to_JSON() for line, _ in ranked_predictions]
+                        
+                        emit('prediction', info)
+                        #time.sleep(1)
+                   
+                    # best_prediction = None
+                    # best_distance = float("inf")
+                    # for prediction in predictions:
+                    #     similar_original, distance, closest_idx= gh.get_closest_original_line(prediction)
+                    #     #distance = similar_original.latent_line_diff(prediction)
+                    #     print("distance", distance)
+                    #     if distance < best_distance and distance < 0.25:
+                    #         best_prediction = prediction
+                    #         best_distance = distance
+
+                    # if best_prediction is not None:
+                    #     test_cluster, test_avg = gh.evaluate_ensemble(best_prediction, gh.pattern_trainer.max_dist, distance_list=[0.01])
+                    #     print("TEST CLUSTER", len(test_cluster))
+                    #     print("TEST CLUSTER distances", [line.pos_diff(best_prediction) for line in test_avg])
+                    #     best_prediction.immutable = True
+                    #     best_prediction.stopped = True
+                    #     best_prediction.is_fixed = True
+                    #     gh.lines.append(best_prediction)
+                    #     print(f"ACCEPTED (distance: {best_distance})")
 
                     
 
@@ -818,21 +889,21 @@ def generate_pattern(data):
                     
                     
                         
-                    info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
+                    #info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                     #info["ghost_lines"] = [line.to_JSON() for line in predictions_to_emit]
-                    info["average_line"] = [p.to_JSON() for p in predictions]
+                    #info["average_line"] = [p.to_JSON() for p in predictions]
                    
-                    info["comparison_line"] = [best_prediction.to_JSON()] if best_prediction is not None else []
+                    #info["comparison_line"] = [best_prediction.to_JSON()] if best_prediction is not None else []
                     #info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in average_line.used_ids]
                     
-                    emit('prediction', info)
-                    print("prediction emitted")
+                    #emit('prediction', info)
+                    #print("prediction emitted")
                     #time.sleep(3)
 
                     gh.lines[line_idx] = None
                     
 
-                    time.sleep(3)
+                    
                         
                             
                            
