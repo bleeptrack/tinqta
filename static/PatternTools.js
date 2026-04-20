@@ -11,7 +11,6 @@ export class PatternTools extends HTMLElement {
 		this.shadow = this.attachShadow({ mode: 'open' });
 		this.canvas = new PaperCanvasDraw()
 		this.activeModelName = 'grid'
-		this.activeCorrection = false
 		this.basicTool = new paper.Tool()
 		this.activeLine = null
 
@@ -61,7 +60,7 @@ export class PatternTools extends HTMLElement {
 		this.visualTool.onMouseUp = (event) => {
 			this.activeLine.simplify()
 			let processedLine = this.canvas.processLine(this.activeLine)
-			this.socket.emit("add:visual", {"position": {"x": event.point.x, "y": event.point.y},"line": processedLine, "name": this.activeModelName, "correction": false})
+			this.socket.emit("add:visual", {"position": {"x": this.activeLine.firstSegment.point.x, "y": this.activeLine.firstSegment.point.y},"line": processedLine, "name": this.activeModelName, "correction": false})
 			this.activeLine = null
 		}
 
@@ -197,6 +196,12 @@ export class PatternTools extends HTMLElement {
 					gap: 0.5rem;
 					min-width: 0;
 				}
+				#tools-container .tool-radios {
+					display: flex;
+					flex-direction: column;
+					gap: 0.5rem;
+					min-width: 0;
+				}
 				label.toggle-row.scribble {
 					width: 100%;
 					max-width: 100%;
@@ -256,6 +261,62 @@ export class PatternTools extends HTMLElement {
 					width: calc(100% - 4px);
 					left: 2px;
 				}
+				.tools-extra {
+					display: flex;
+					flex-direction: column;
+					gap: 0.5rem;
+					margin-top: 0.25rem;
+					padding-top: 0.75rem;
+					border-top: 1px solid rgba(0, 0, 0, 0.12);
+					font-family: ui-sans-serif, system-ui, sans-serif;
+					font-size: 0.85rem;
+					color: #333;
+				}
+				.tools-extra label.correction-check {
+					display: flex;
+					align-items: center;
+					gap: 0.5rem;
+					cursor: pointer;
+					user-select: none;
+				}
+				.tools-extra label.correction-check input {
+					width: auto;
+					height: auto;
+					margin: 0;
+					cursor: pointer;
+				}
+				.noise-row {
+					display: flex;
+					flex-direction: column;
+					gap: 0.35rem;
+				}
+				.noise-row .noise-controls {
+					display: flex;
+					align-items: center;
+					gap: 0.5rem;
+					flex-wrap: wrap;
+				}
+				.noise-row input[type="range"] {
+					flex: 1;
+					min-width: 0;
+					height: auto;
+					padding: 0;
+				}
+				.noise-row .noise-value {
+					min-width: 2.25rem;
+					font-variant-numeric: tabular-nums;
+				}
+				.noise-row button.apply-noise {
+					padding: 0.35rem 0.65rem;
+					font: inherit;
+					cursor: pointer;
+					border: 2px solid #000;
+					background: #fff;
+					border-radius: 2px;
+				}
+				.noise-row button.apply-noise:hover {
+					background: #f5f5f5;
+				}
 			</style>
 			
 			<div id="container">
@@ -270,10 +331,26 @@ export class PatternTools extends HTMLElement {
 				<aside id="sidebar">
 					<section class="button-section" aria-label="Tools">
 						<h2 id="tools-heading">Tools</h2>
-						<div id="tools-container" role="radiogroup" aria-labelledby="tools-heading">
-							<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="stamp"><span class="toggle-row-label">stamp</span></label>
-							<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="visual"><span class="toggle-row-label">visual</span></label>
-							<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="draw" checked><span class="toggle-row-label">draw</span></label>
+						<div id="tools-container">
+							<div class="tool-radios" role="radiogroup" aria-labelledby="tools-heading">
+								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="stamp"><span class="toggle-row-label">stamp</span></label>
+								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="visual"><span class="toggle-row-label">visual</span></label>
+								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="draw" checked><span class="toggle-row-label">draw</span></label>
+							</div>
+							<div class="tools-extra">
+								<label class="correction-check">
+									<input type="checkbox" id="correction-toggle" name="correction-toggle">
+									<span>Correction</span>
+								</label>
+								<div class="noise-row">
+									<span>Noise (lines)</span>
+									<div class="noise-controls">
+										<input type="range" id="line-noise-slider" min="0.1" max="1" step="0.1" value="0.5" aria-valuemin="0.1" aria-valuemax="1" aria-valuenow="0.5">
+										<span class="noise-value" id="line-noise-value" aria-live="polite">0.5</span>
+										<button type="button" class="apply-noise" id="line-noise-apply">Apply</button>
+									</div>
+								</div>
+							</div>
 						</div>
 					</section>
 					<section class="button-section" aria-label="Models">
@@ -281,8 +358,7 @@ export class PatternTools extends HTMLElement {
 						<div id="model-container" role="radiogroup" aria-labelledby="models-heading">
 							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="boxes"><span class="toggle-row-label">boxes</span></label>
 							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="swirls"><span class="toggle-row-label">swirls</span></label>
-							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="grid" checked><span class="toggle-row-label">grid</span></label>
-							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="fence"><span class="toggle-row-label">fence</span></label>
+							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="triangles" checked><span class="toggle-row-label">triangles</span></label>
 						</div>
 					</section>
 				</aside>
@@ -322,6 +398,31 @@ export class PatternTools extends HTMLElement {
 				this.socket.emit("change:model", input.value)
 				console.log("model changed to", input.value)
 			})
+		})
+
+		const correctionToggle = this.shadow.getElementById("correction-toggle")
+		correctionToggle.addEventListener("change", () => {
+			this.socket.emit("change:correction", { correction: correctionToggle.checked })
+		})
+		this.socket.on("correctionChanged", (payload) => {
+			if (typeof payload?.correction === "boolean") {
+				correctionToggle.checked = payload.correction
+			}
+		})
+
+		const noiseSlider = this.shadow.getElementById("line-noise-slider")
+		const noiseValue = this.shadow.getElementById("line-noise-value")
+		const syncNoiseLabel = () => {
+			const v = Number(noiseSlider.value)
+			noiseValue.textContent = Number.isFinite(v) ? v.toFixed(1) : noiseSlider.value
+			noiseSlider.setAttribute("aria-valuenow", noiseValue.textContent)
+		}
+		noiseSlider.addEventListener("input", syncNoiseLabel)
+		syncNoiseLabel()
+		this.shadow.getElementById("line-noise-apply").addEventListener("click", () => {
+			const amount = parseFloat(noiseSlider.value)
+			this.socket.emit("apply:line_noise", { amount })
+			console.log("apply line noise (server TBD)", amount)
 		})
 	}
 

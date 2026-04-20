@@ -17,6 +17,7 @@ class Line():
         #self.stopped = False
         self.dropout = 1
         self.adaption_rate = 1
+        self.added_at_stage = None
 
         if isinstance(points, torch.Tensor):
             self.points = Line._tensor2Points(points)
@@ -56,11 +57,11 @@ class Line():
         print("_______________________")
         print(f"{'✓' if pos_diff else '✗'} pos_diff", pos_diff_value)
         print(f"{'✓' if latent_diff else '✗'} latent_diff", latent_diff_value)
-        print(f"{'✓' if rotation_diff else '✗'} rotation_diff", rotation_diff_value)
-        print(f"{'✓' if scale_diff else '✗'} scale_diff", scale_diff_value)
+        #print(f"{'✓' if rotation_diff else '✗'} rotation_diff", rotation_diff_value)
+        #print(f"{'✓' if scale_diff else '✗'} scale_diff", scale_diff_value, self.scale, other.scale)
         print("_______________________")
-        return (pos_diff and latent_diff and rotation_diff and scale_diff, pos_diff_value + latent_diff_value + rotation_diff_value + scale_diff_value)
-    
+        #return (pos_diff and latent_diff and rotation_diff and scale_diff, pos_diff_value + latent_diff_value + rotation_diff_value + scale_diff_value)
+        return (pos_diff and latent_diff, pos_diff_value + latent_diff_value)
     def diff(self, other):
         if self.position_type == "relative" or other.position_type == "relative":
             raise ValueError("Relative position type not supported for diff")
@@ -158,6 +159,14 @@ class Line():
     def create_line_graph(self): #graph per stroke
         connections = []
         hidden_states = []
+
+        if self.position_type == "absolute":
+            base_pos_x = self.points[0]['x']
+            base_pos_y = self.points[0]['y']
+        else:
+            base_pos_x = 0
+            base_pos_y = 0
+
         for i in range(1,len(self.points)):
             connections.append([i-1,i])
             connections.append([i,i-1])
@@ -176,6 +185,8 @@ class Line():
             hidden_states.append([point['x'], point['y']])
 
         x = torch.tensor(hidden_states, dtype=torch.float)
+        if self.position_type == "absolute":
+            x = x - torch.tensor([base_pos_x, base_pos_y], dtype=torch.float)
 
         return x, edge_index
     
@@ -210,6 +221,8 @@ class Line():
             line["patch_id"] = self.patch_id
         if hasattr(self, 'cluster_number'):
             line["cluster_number"] = int(self.cluster_number)  # Ensure it's a Python int for JSON serialization
+        if hasattr(self, 'added_at_stage') and self.added_at_stage is not None:
+            line["added_at_stage"] = self.added_at_stage
         return line
     
     def clone(self):

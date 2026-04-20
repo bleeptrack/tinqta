@@ -203,6 +203,16 @@ class GraphHandler:
                 z = line_trainer.encodeLineVector(x, edge_index)
                 line.add_latent_vector(z, line_trainer.name)
 
+    def add_missing_latent_vector_to_line(self, line, line_trainer=None):
+        if line_trainer is None:
+            line_trainer = self.line_trainer
+        if line_trainer.name not in line.latent_vectors or line.latent_vectors[line_trainer.name] is None:
+            x, edge_index = line.create_line_graph()
+            print("x", x)
+            z = line_trainer.encodeLineVector(x, edge_index)
+            line.add_latent_vector(z, line_trainer.name)
+        return line
+
     def add_missing_pattern_latent_vectors(self, pattern_trainer):
         """Ensure every line has pattern_trainer latent (same dim) so pattern graph stack doesn't fail."""
         for line in self.lines:
@@ -411,8 +421,8 @@ class GraphHandler:
         min_coverage = 0.5
         outsider_distance = sample_distance/3.5
 
-        max_x = 2
-        max_y = 2
+        max_x = 5
+        max_y = 8  #4,5
         for i in range(max_x):
             for j in range(max_y):
                 print("i", i, "j", j)
@@ -440,6 +450,26 @@ class GraphHandler:
                     
         #         self.lines.append(filler_line)
         #         print("Added filler line at", reference_position)
+
+    def create_noisy_copy(self, line, max_dist=None, latent_name=None, noise_level=0.01):
+        if max_dist is None:
+            max_dist = self.pattern_trainer.max_dist
+        if latent_name is None:
+            latent_name = self.pattern_trainer.name
+
+        z = line.get_pattern_z(center_position=line.position, latent_name=latent_name, max_dist=max_dist) 
+        noise = torch.randn_like(z) * noise_level
+        #dampen noise for the first 4 elements pos, rot, scale
+        if noise.shape[-1] >= 4:
+            noise[..., :4] *= 0.25
+            noise[4:] *= 2
+        noisy_z = z + noise
+        noisy_line = self.decompose_node(noisy_z)
+        noisy_line.update_position_from_reference(line.position, max_dist=max_dist)
+        noisy_line.is_fixed = True
+
+        noisy_line.added_at_stage = line.added_at_stage
+        return noisy_line
                     
 
     def random_fill(self, fieldX=800, fieldY=800, retry_count=300, lineTrainer=None, patternTrainer=None, noise_level=0.01):
@@ -779,6 +809,7 @@ class GraphHandler:
         return predictions
 
     def predict_to_draw(self, position):
+        self.add_missing_latent_vectors()
         data = self.sample_pattern_from_position(position, latent_name=self.pattern_trainer.name, max_dist=self.pattern_trainer.max_dist, inference=True)
         if data is not None:
             z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)

@@ -305,6 +305,11 @@ export class PaperCanvas extends HTMLElement {
 		}
 	}
 
+	resetZoom(){
+		paper.view.zoom = 1
+		paper.view.center = paper.project.activeLayer.bounds.center
+	}
+
 	exportLines(){
 		// Convert originalLines to JSON
 		const jsonData = JSON.stringify(this.originalLines.map(line => line.exportJSON()));

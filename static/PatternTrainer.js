@@ -87,6 +87,20 @@ export class PatternTrainer extends HTMLElement {
 				if(line["immutable"]){
 					color = "red"
 				}
+				if(line["added_at_stage"]){
+					if(line["added_at_stage"] == "patch accept"){
+						color = "pink"
+					}
+					if(line["added_at_stage"] == "weave"){
+						color = "blue"
+					}
+					if(line["added_at_stage"] == "weave adjust"){
+						color = "purple"
+					}
+					if(line["added_at_stage"] == "patch"){
+						color = "black"
+					}
+				}
 				let l = this.canvas.drawLine(line, color, paper.project.layers["lines"])
 				l.strokeWidth = 7
 				l.opacity = 0.2
@@ -226,7 +240,7 @@ export class PatternTrainer extends HTMLElement {
 		if(data["comparison_line"]){
 			for(let line of data["comparison_line"]){
 				let l = this.canvas.drawLine(line, "blue")
-				l.opacity = 0.2
+				l.opacity = 0.5
 				l.strokeWidth = 7
 				l.strokeCap = "round"
 			}
@@ -234,7 +248,7 @@ export class PatternTrainer extends HTMLElement {
 		if(data["average_line"]){
 			for(let line of data["average_line"]){
 				let l = this.canvas.drawLine(line, "green")
-				l.opacity = 1
+				l.opacity = 0.4
 				l.strokeWidth = 7
 				l.strokeCap = "round"
 			}
@@ -366,6 +380,8 @@ export class PatternTrainer extends HTMLElement {
 						<button id="pattern-sample" class="scribble">get pattern sample</button>
 						<button id="train-pattern" class="scribble">train pattern</button>
 						<button id="generate-pattern" class="scribble">generate pattern</button>
+						<button id="make-noise" class="scribble">add noise</button>
+						<button id="reset-zoom" class="scribble">reset zoom</button>
 					</div>
 				</aside>
 				<div id="canvas-container">
@@ -413,6 +429,14 @@ export class PatternTrainer extends HTMLElement {
 
 		this.shadow.getElementById("generate-pattern").addEventListener("click", () => {
 			this.socket.emit('generate pattern', {name:this.shadow.getElementById("name").innerHTML})
+		})
+
+		this.shadow.getElementById("make-noise").addEventListener("click", () => {
+			this.socket.emit("make noise", {noise_level: 0.02})
+		})
+
+		this.shadow.getElementById("reset-zoom").addEventListener("click", () => {
+			this.canvas.resetZoom();
 		})
 		
 	}
