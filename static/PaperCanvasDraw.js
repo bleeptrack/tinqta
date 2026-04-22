@@ -9,6 +9,7 @@ export class PaperCanvasDraw extends HTMLElement {
 		this.saveAnimation = true
 		this.recordedData = []
 		this.recording = false
+		this.linelist = []
 
 		const container = document.createElement('template');
 
@@ -41,8 +42,8 @@ export class PaperCanvasDraw extends HTMLElement {
 
 	clear(){
 		paper.project.activeLayer.removeChildren()
-		
 	}
+
 
 
 	connectedCallback() {
@@ -100,9 +101,8 @@ export class PaperCanvasDraw extends HTMLElement {
 		path.scale(lineJSON.scale)
 		path.rotate(lineJSON.rotation * 360)
 
-		if (smoothing) {
-			path.simplify()
-		}
+		path.simplify()
+		
 
 		if(layer){
 			paper.project.layers["lines"].activate()
@@ -232,6 +232,22 @@ export class PaperCanvasDraw extends HTMLElement {
 			eigenvectors: [pc1, pc2],
 			center: {x: meanX, y: meanY}
 		};
+	}
+
+	colorByTool(){
+		let toolColors = {
+			"stamp": "green",
+			"visual": "blue",
+			"stamp correction": "red",
+			"visual correction": "purple",
+		}
+		for(let line of this.linelist){
+			if(line.usedTool){
+				line.strokeColor = toolColors[line.usedTool]
+			}else{
+				line.strokeColor = "black"
+			}
+		}
 	}
 
 }

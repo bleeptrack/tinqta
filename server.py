@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, send, emit
 from DrawData import GraphHandler
 from Model import LineTrainer, PatternTrainer
@@ -32,6 +32,7 @@ socketio = SocketIO(
 #create folders if they dont exist yet
 Path("./baseData").mkdir(exist_ok=True)
 Path("./lineModels").mkdir(exist_ok=True)
+Path("./saved_svgs").mkdir(exist_ok=True)
 
 #create folders if they dont exist yet
 Path("./data").mkdir(exist_ok=True)
@@ -99,6 +100,13 @@ def connect():
     mlist = getModels()
     print(mlist)
     emit('models', mlist)
+    referer = request.headers.get("Referer", "")
+    if "/draw" in referer:
+        info = {"lines": [line.to_JSON() for line in gh.lines if line is not None]}
+        emit('draw:lines', info)
+        if gh.line_trainer is None:
+            change_model("swirls")
+        emit("set:info", {"model": gh.line_trainer.name, "correction": correction})
 
 @socketio.event
 def disconnect():
@@ -160,6 +168,10 @@ def add_visual(data):
         new_line.position = position
 
     if line is not None:
+        new_line.added_with_model = gh.line_trainer.name
+        new_line.added_at_stage = "visual"
+        if correction:
+            new_line.added_at_stage = "visual correction"
         gh.lines.append(new_line)
         info = {}
         info["lines"] = [line.to_JSON() for line in gh.lines if line is not None]
@@ -225,12 +237,59 @@ def add_stamp(data):
             new_line.rotation = line.rotation
             new_line.scale = line.scale
 
+        new_line.added_with_model = name
+        new_line.added_at_stage = "stamp"
+        if correction:
+            new_line.added_at_stage = "stamp correction"
         gh.lines.append(new_line)
         info = {}
         info["lines"] = [line.to_JSON() for line in gh.lines]
         emit('draw:lines', info)
     else:
         print("no line predicted")
+
+@socketio.on('erase:lines')
+def erase_lines(data):
+    print("erase lines received", data)
+    if isinstance(data, list):
+        indices = data
+    else:
+        indices = data.get('indices', [])
+    for index in indices:
+        idx = int(index)
+        if 0 <= idx < len(gh.lines):
+            gh.lines[idx] = None
+    gh.lines = [line for line in gh.lines if line is not None]
+    info = {}
+    info["lines"] = [line.to_JSON() for line in gh.lines]
+    emit('draw:lines', info)
+
+@socketio.on('clear')
+def clear():
+    print("clear received")
+    gh.clear()
+    info = {}
+    info["lines"] = [line.to_JSON() for line in gh.lines]
+    emit('draw:lines', info)
+
+@socketio.on('undo')
+def undo():
+    print("undo received")
+    gh.lines.pop()
+    info = {}
+    info["lines"] = [line.to_JSON() for line in gh.lines]
+    emit('draw:lines', info)
+
+@socketio.on('apply:noise')
+def apply_noise(data):
+    print("apply noise", data)
+    noise_level = data['noise_level']
+    if noise_level is None:
+        noise_level = 0.01
+
+    info = {}
+    info["lines"] = [gh.create_noisy_copy(line,noise_level=noise_level).to_JSON() for line in gh.lines if line != None]
+    emit('draw:lines', info)
 
 @socketio.on('deleteModel')
 def delete_model(data):
@@ -595,6 +654,8 @@ def make_noise(data):
     info["initial"] = [gh.create_noisy_copy(line,noise_level=noise_level).to_JSON() for line in gh.lines if line != None]
     emit('prediction', info)
     print("prediction emitted")
+
+
 
 @socketio.on('sample pattern')
 def sample_pattern(data):
@@ -1102,6 +1163,27 @@ def website_draw():
 @app.route("/webcam")
 def website_webcam():
     return render_template('webcam.html')
+
+@app.route("/save-svg", methods=["POST"])
+def save_svg():
+    payload = request.get_json(silent=True) or {}
+    svg_content = payload.get("svg")
+
+    if not isinstance(svg_content, str) or not svg_content.strip():
+        return jsonify({"error": "Missing SVG content"}), 400
+
+    # Keep file names predictable and filesystem-safe.
+    model_name = str(payload.get("model", "pattern")).strip() or "pattern"
+    safe_model_name = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in model_name)
+    timestamp = int(time.time() * 1000)
+    filename = f"{safe_model_name}-{timestamp}.svg"
+
+    output_dir = Path("./saved_svgs")
+    output_dir.mkdir(exist_ok=True)
+    output_path = output_dir / filename
+    output_path.write_text(svg_content, encoding="utf-8")
+
+    return jsonify({"status": "ok", "filename": filename}), 200
 
 #@app.route("/photo")
 #def website_photo():

@@ -18,6 +18,7 @@ class Line():
         self.dropout = 1
         self.adaption_rate = 1
         self.added_at_stage = None
+        self.added_with_model = None
 
         if isinstance(points, torch.Tensor):
             self.points = Line._tensor2Points(points)
@@ -223,6 +224,8 @@ class Line():
             line["cluster_number"] = int(self.cluster_number)  # Ensure it's a Python int for JSON serialization
         if hasattr(self, 'added_at_stage') and self.added_at_stage is not None:
             line["added_at_stage"] = self.added_at_stage
+        if hasattr(self, 'added_with_model') and self.added_with_model is not None:
+            line["added_with_model"] = self.added_with_model
         return line
     
     def clone(self):
