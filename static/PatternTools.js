@@ -256,11 +256,33 @@ export class PatternTools extends HTMLElement {
 					min-width: 0;
 					display: flex;
 					flex-direction: column;
-					gap: 1.25rem;
-					overflow-x: hidden;
-					overflow-y: auto;
+					gap: 0.65rem;
 					min-height: 0;
 					padding-inline: 0.35rem;
+					padding-bottom: 0.2rem;
+					box-sizing: border-box;
+					overflow: hidden;
+				}
+				#sidebar-content {
+					flex: 1 1 auto;
+					min-height: 0;
+					min-width: 0;
+					overflow-x: hidden;
+					overflow-y: auto;
+					display: flex;
+					flex-direction: column;
+					gap: 1.25rem;
+				}
+				#sidebar-footer {
+					flex: 0 0 auto;
+					min-width: 0;
+					width: 100%;
+					box-sizing: border-box;
+					padding-inline: 0.15rem 0.55rem;
+				}
+				#sidebar-footer #save-svg {
+					width: 100%;
+					max-width: none;
 					box-sizing: border-box;
 				}
 				.button-section {
@@ -361,6 +383,46 @@ export class PatternTools extends HTMLElement {
 				#model-container label.scribble:has(input:checked):hover::after {
 					width: calc(100% - 4px);
 					left: 2px;
+				}
+				#model-container label.toggle-row.scribble {
+					flex-direction: row;
+					align-items: center;
+					justify-content: flex-start;
+					padding: 0.35rem 0.45rem 0.35rem 1.15rem;
+					gap: 0;
+					width: 100%;
+				}
+				#model-container .model-option-content {
+					display: flex;
+					flex-direction: row;
+					align-items: center;
+					justify-content: flex-start;
+					gap: 0.55rem;
+					flex: 1;
+					min-width: 0;
+					width: 100%;
+				}
+				#model-container .model-preview {
+					display: block;
+					flex: 0 0 58%;
+					width: 58%;
+					max-width: 58%;
+					height: 8.5rem;
+					object-fit: contain;
+					object-position: left center;
+					pointer-events: none;
+					min-width: 0;
+					margin-left: 0.65rem;
+					margin-right: 0.2rem;
+					box-sizing: border-box;
+				}
+				#model-container .toggle-row-label {
+					flex: 1;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					text-align: center;
+					min-width: 0;
 				}
 				#model-container.is-disabled {
 					opacity: 0.5;
@@ -494,18 +556,18 @@ export class PatternTools extends HTMLElement {
 				
 				<div id="canvas-area">
 					<div id="canvas-container">
-						<button class="scribble material-symbols-outlined" id="save-svg">save</button>
 						<button class="scribble material-symbols-outlined" id="clear">delete</button>
 						<button id="undo" class="material-symbols-outlined scribble">undo</button>
 					</div>
 				</div>
 				<aside id="sidebar">
+					<div id="sidebar-content">
 					<section class="button-section" aria-label="Tools">
 						<h2 id="tools-heading">Tools</h2>
 						<div id="tools-container">
 							<div class="tool-radios" role="radiogroup" aria-labelledby="tools-heading">
 								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="stamp"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">ads_click</span><span class="toggle-row-label">stamp</span></span></label>
-								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="visual"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">shape_line</span><span class="toggle-row-label">visual</span></span></label>
+								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="visual"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">shape_line</span><span class="toggle-row-label">adapt</span></span></label>
 								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="draw" checked><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">draw</span><span class="toggle-row-label">draw</span></span></label>
 								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="erase"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">ink_eraser</span><span class="toggle-row-label">erase</span></span></label>
 								
@@ -530,11 +592,15 @@ export class PatternTools extends HTMLElement {
 					<section class="button-section" aria-label="Models">
 						<h2 id="models-heading">Models</h2>
 						<div id="model-container" role="radiogroup" aria-labelledby="models-heading">
-							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="boxes"><span class="toggle-row-label">boxes</span></label>
-							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="swirls"><span class="toggle-row-label">swirls</span></label>
-							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="triangles" checked><span class="toggle-row-label">triangles</span></label>
+							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="boxes"><span class="model-option-content"><img class="model-preview" src="/static/boxes.svg" alt=""><span class="toggle-row-label">boxes</span></span></label>
+							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="swirls"><span class="model-option-content"><img class="model-preview" src="/static/swirls.svg" alt=""><span class="toggle-row-label">swirls</span></span></label>
+							<label class="scribble toggle-row"><input type="radio" name="pattern-model" value="triangles" checked><span class="model-option-content"><img class="model-preview" src="/static/triangles.svg" alt=""><span class="toggle-row-label">triangles</span></span></label>
 						</div>
 					</section>
+					</div>
+					<div id="sidebar-footer">
+						<button type="button" class="scribble" id="save-svg" aria-label="Save drawing as SVG"><span class="material-symbols-outlined">save</span>SUBMIT</button>
+					</div>
 				</aside>
 			</div>
 		`;
