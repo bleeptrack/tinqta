@@ -519,8 +519,8 @@ export class PatternTools extends HTMLElement {
 								<div class="noise-row">
 									<span class="noise-label">Noise (lines)</span>
 									<div class="noise-controls">
-										<input type="range" id="line-noise-slider" min="0.1" max="1" step="0.1" value="0.5" aria-valuemin="0.1" aria-valuemax="1" aria-valuenow="0.5">
-										<span class="noise-value" id="line-noise-value" aria-live="polite">0.5</span>
+										<input type="range" id="line-noise-slider" min="0" max="0.05" step="0.001" value="0.01">
+										<span class="noise-value" id="line-noise-value" aria-live="polite">0.01</span>
 										<button type="button" class="apply-noise scribble" id="line-noise-apply">Apply</button>
 									</div>
 								</div>
@@ -604,7 +604,7 @@ export class PatternTools extends HTMLElement {
 		const noiseValue = this.shadow.getElementById("line-noise-value")
 		const syncNoiseLabel = () => {
 			const v = Number(noiseSlider.value)
-			noiseValue.textContent = Number.isFinite(v) ? v.toFixed(1) : noiseSlider.value
+			noiseValue.textContent = Number.isFinite(v) ? v.toFixed(3) : noiseSlider.value
 			noiseSlider.setAttribute("aria-valuenow", noiseValue.textContent)
 		}
 		noiseSlider.addEventListener("input", syncNoiseLabel)

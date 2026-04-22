@@ -288,7 +288,34 @@ def apply_noise(data):
         noise_level = 0.01
 
     info = {}
-    info["lines"] = [gh.create_noisy_copy(line,noise_level=noise_level).to_JSON() for line in gh.lines if line != None]
+    # gh.add_missing_latent_vectors()
+    active_lines = [line for line in gh.lines if line is not None]
+    noisy_lines = [None] * len(active_lines)
+    batched_by_model = {}
+    model_order = []
+
+    for idx, line in enumerate(active_lines):
+        model_name = line.added_with_model
+        if model_name is None:
+            noisy_lines[idx] = line.clone()
+            continue
+
+        if model_name not in batched_by_model:
+            batched_by_model[model_name] = []
+            model_order.append(model_name)
+        batched_by_model[model_name].append((idx, line))
+
+    for model_name in model_order:
+        if model_name != gh.line_trainer.name:
+            change_model(model_name)
+        for idx, line in batched_by_model[model_name]:
+            noisy_lines[idx] = gh.create_noisy_copy(
+                line,
+                noise_level=noise_level,
+                latent_name=model_name
+            )
+
+    info["lines"] = [line.to_JSON() for line in noisy_lines]
     emit('draw:lines', info)
 
 @socketio.on('deleteModel')
