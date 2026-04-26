@@ -93,6 +93,15 @@ def get_or_create_trainers(name):
     return line_trainers[name], pattern_trainers[name]
 
 
+def ensure_graph_initialized(model_name="swirls"):
+    if gh.line_trainer is not None and gh.pattern_trainer is not None and len(gh.original_lines) > 0:
+        return
+
+    line_trainer, pattern_trainer = get_or_create_trainers(model_name)
+    gh.set_default_trainers(pattern_trainer=pattern_trainer, line_trainer=line_trainer)
+    gh.calculate_original_lines()
+
+
 def _get_or_create_user_id():
     if not has_request_context():
         return "__global__"
@@ -189,14 +198,12 @@ def connect():
     emit('init', config)
     emit('correctionChanged', {'correction': correction})
     mlist = getModels()
-    print(mlist)
     emit('models', mlist)
     referer = request.headers.get("Referer", "")
     if "/draw" in referer:
+        ensure_graph_initialized()
         info = {"lines": [line.to_JSON() for line in gh.lines if line is not None]}
         emit('draw:lines', info)
-        if gh.line_trainer is None:
-            change_model("swirls")
         emit("set:info", {"model": gh.line_trainer.name, "correction": correction})
 
 @socketio.event
@@ -217,35 +224,26 @@ def default_error_handler(e):
 
 @socketio.on('add:line')
 def add_line(data):
-    print("line received", data)
     gh.add_lines([data])
     info = {}
     info["lines"] = [line.to_JSON() for line in gh.lines]
-    print("lines", info["lines"])
 
     emit('draw:lines', info)
 
 @socketio.on('add:visual')
 def add_visual(data):
     #print("visual received", data
+    ensure_graph_initialized()
     gh.lines = [line for line in gh.lines if line is not None]
     position = {'x': float(data['position']['x']), 'y': float(data['position']['y'])}
 
     line_data = data['line']
     line = Line(line_data['points'], line_data['scale'], line_data['rotation'], position=position)
-    print("line", line.to_JSON())
-    
     line = gh.add_missing_latent_vector_to_line(line)
     closest_original, distance, closest_idx = gh.get_closest_original_line(line)
-    print("closest original", closest_original.to_JSON())
-    
-    print("distance", distance, closest_idx)
-    print(line.latent_vectors, closest_original.latent_vectors)
 
     scale_offset = line.scale - closest_original.scale
     rotation_offset = line.rotation - closest_original.rotation
-    print("scale offset", scale_offset)
-    print("rotation offset", rotation_offset)
 
     new_line = closest_original.clone()
     new_line.position = position
@@ -253,11 +251,11 @@ def add_visual(data):
     new_line.scale = line.scale
 
     if correction:
-        corrected_line = apply_correction(new_line, position)
+        new_line = apply_correction(new_line, position)
         
-        new_line.scale = new_line.scale + scale_offset
-        new_line.rotation = new_line.rotation + rotation_offset
-        new_line.position = position
+        #new_line.scale = new_line.scale + scale_offset
+        #new_line.rotation = new_line.rotation + rotation_offset
+        #new_line.position = position
 
     if line is not None:
         new_line.added_with_model = gh.line_trainer.name
@@ -270,7 +268,7 @@ def add_visual(data):
         #print("lines", info["lines"])
         emit('draw:lines', info)
     else:
-        print("no line predicted")
+        print("add:visual produced no prediction")
 
 def apply_correction(line, position):
     prediction = gh.predict_to_draw(position)
@@ -282,7 +280,6 @@ def apply_correction(line, position):
     
 @socketio.on('change:model')
 def change_model(data):
-    print("change model received", data)
     name = data
     lineTrainer = line_trainers[name]
     patternTrainer = pattern_trainers[name]
@@ -294,15 +291,13 @@ def change_model(data):
 @socketio.on('change:correction')
 def change_correction(data):
     global correction
-    print("change correction received", data)
     correction = bool(data['correction'])
     emit('correctionChanged', {'correction': correction})
 
 @socketio.on('add:stamp')
 def add_stamp(data):
-    print("stamp received")
+    ensure_graph_initialized()
     name = gh.line_trainer.name
-    print("using name", name)
     gh.lines = [line for line in gh.lines if line is not None]
     position = {'x': float(data['position']['x']), 'y': float(data['position']['y'])}
     if len(gh.lines) == 0:
@@ -318,7 +313,6 @@ def add_stamp(data):
             line =gh.original_lines[random.randint(0, len(gh.original_lines) - 1)]
             line.position = position
         if not correction:
-            print("not correction - resetting position to", position)
             line.position = position
 
     if line is not None:
@@ -338,11 +332,10 @@ def add_stamp(data):
         info["lines"] = [line.to_JSON() for line in gh.lines]
         emit('draw:lines', info)
     else:
-        print("no line predicted")
+        print("add:stamp produced no prediction")
 
 @socketio.on('erase:lines')
 def erase_lines(data):
-    print("erase lines received", data)
     if isinstance(data, list):
         indices = data
     else:
@@ -358,15 +351,15 @@ def erase_lines(data):
 
 @socketio.on('clear')
 def clear():
-    print("clear received")
+    active_model = gh.line_trainer.name if gh.line_trainer is not None else "swirls"
     gh.clear()
+    ensure_graph_initialized(active_model)
     info = {}
     info["lines"] = [line.to_JSON() for line in gh.lines]
     emit('draw:lines', info)
 
 @socketio.on('undo')
 def undo():
-    print("undo received")
     gh.lines.pop()
     info = {}
     info["lines"] = [line.to_JSON() for line in gh.lines]
@@ -374,7 +367,6 @@ def undo():
 
 @socketio.on('apply:noise')
 def apply_noise(data):
-    print("apply noise", data)
     noise_level = data['noise_level']
     if noise_level is None:
         noise_level = 0.01
@@ -437,7 +429,6 @@ def delete_model(data):
 @socketio.on('raw data')
 def raw_data(data):
     gh.init_raw(data)
-    print('raw data recieved')
 
 @socketio.on('new dataset')
 def new_dataset(data):
@@ -458,13 +449,11 @@ def send_progress(trainer, text, label=None):
     if isinstance(text, list):
         pointlist = []
         for z in text:
-            print(z)
             points_tensor = trainer.decode_latent_vector(z)
             pointlist.append(Line(points_tensor).to_JSON())
         #print(pointlist)
         emit('progress', {'lines': pointlist} )
     else:
-        print("sending progress", text)
         emit('progress', {'percent':text, 'label':label} )
         
 def getLatentspaceLine(data):
@@ -479,7 +468,6 @@ def getModels():
 
 @socketio.on('generate')
 def generate(data):
-    print(data)
     lineTrainer = LineTrainer(data['name'])
 
     lines1 = lineTrainer.generate(10, 'random')
@@ -493,11 +481,8 @@ def generate(data):
     
 @socketio.on('convertToLatentspace')
 def convertToLatentspace(data):
-    print(data)
-    
-    
     if data['name'] == "random":
-        print("choosing RANDOM model")
+        print("convertToLatentspace: choosing random model")
         trainer = LineTrainer(random.choice(getModels()))
     else:
         trainer = LineTrainer(data['name'])
@@ -528,7 +513,6 @@ def compare(data):
     originlist = []
     tensors, originpoints = trainer.extractOriginLineVectors()
     for z in tensors:
-        print(z)
         tensor = trainer.decode_latent_vector(z)
         pointlist.append(GraphHandler.tensor2Points(tensor))
         
@@ -668,7 +652,6 @@ def new_pattern(data):
             print(f"Stopping training: Learning rate reached minimum ({current_lr})")
             break
 
-        print("current_lr", current_lr, "min_lr", min_lr)
         visualize_dataset = gh.calculate_dataset_onthefly(nr_samples=3) + random.sample(base_dataset, 3)
         
 
@@ -686,15 +669,11 @@ def new_pattern(data):
 
 @socketio.on('inspect latent')
 def inspect_latent(data):
-    print("inspect latent", data)
-
-
     lineTrainer = LineTrainer(data['name'])
     pointlist = []
     latent_position_list = []
     tensors, _ = lineTrainer.extractOriginLineVectors()
     for z in tensors:
-        print(z)
         tensor = lineTrainer.decode_latent_vector(z)
         pointlist.append(Line._tensor2Points(tensor))
         latent_position_list.append(z.tolist())
@@ -708,11 +687,7 @@ def inspect_latent(data):
         latent_array = np.array(latent_position_list)
         min_latent = latent_array.min(axis=0)
         max_latent = latent_array.max(axis=0)
-        print("Min value in each latent direction:", min_latent)
-        print("Max value in each latent direction:", max_latent)
-
         dist = min(max_latent - min_latent) / 5
-        print("Distance between min and max value in each latent direction:", dist, max_latent - min_latent)
 
     # Create a grid of points from min_latent to max_latent with spacing 'dist'
     # The grid will be in the latent space dimensions (usually 2D or 3D)
@@ -764,7 +739,6 @@ def inspect_latent(data):
 
 @socketio.on('make noise')
 def make_noise(data):
-    print("make noise", data)
     noise_level = data['noise_level']
     if noise_level is None:
         noise_level = 0.01
@@ -772,7 +746,6 @@ def make_noise(data):
     info = {}
     info["initial"] = [gh.create_noisy_copy(line,noise_level=noise_level).to_JSON() for line in gh.lines if line != None]
     emit('prediction', info)
-    print("prediction emitted")
 
 
 
@@ -788,7 +761,6 @@ def sample_pattern(data):
     gh.load_template_from_pattern_trainer()
 
     sample_data = gh.calculate_dataset_onthefly(nr_samples=1)[0]
-    print("sample_data", sample_data)
 
     info = prepare_sample_for_visualization(sample_data, lineTrainer, pt)
     info["base_list"] = [line.to_JSON() for line in gh.lines]
@@ -830,7 +802,6 @@ def generate_pattern(data):
         info["initial"] = [line.to_JSON() for line in gh.lines]
         info["patch_data"] = patch_data
         emit('prediction', info)
-        print("prediction emitted")
        
 
         #flow_data = gh.calculate_flow_grid(grid_resolution=50)
@@ -910,7 +881,7 @@ def generate_pattern(data):
                 gh.lines = [line for line in gh.lines if getattr(line, "immutable", False)]
                 gh.lines.extend(all_line_lists.pop(0))
                 if len(all_line_lists) == 0:
-                    print("sleep to catch up")
+                    pass
                     #time.sleep(10)
             else:
                 gen_state = "weave"
@@ -926,16 +897,13 @@ def generate_pattern(data):
                         try_later = [line.clone() for line in backup_lines]
                         backup_lines = []
 
-                        print("check lastrun", last_run, len(try_later))
                         time.sleep(3)
                         if last_run == len(try_later):
                             check_unknown = True
-                            print("CHECK UNKNOWN ENTERED")
 
                         last_run = len(try_later)
                         
                     else:
-                        print("no backup lines")
                         info = {}
                         info["initial"] = [line.to_JSON() for line in gh.lines if line != None]        
                         emit('prediction', info)
@@ -1013,9 +981,7 @@ def generate_pattern(data):
                     average_line = average_lines[0]
                     test, error = average_line.are_similar(line, relaxation=relax_value)
 
-                    print("test", test)
-                    print("error", error)
-                    print("lines lieft", len(try_later))
+                    print("generation step status:", test, error, len(try_later))
 
                     if test:
                         line.immutable = True
@@ -1175,18 +1141,15 @@ def happyness_check(gh):
 
     for idx in range(len(gh.lines)):
         if not gh.lines[idx].immutable:
-            print("idx", idx)
             tmp = gh.lines[idx].clone()
             gh.lines[idx].stopped = False
             gh.lines[idx].is_fixed = False
             gh.calculate_gen_step(use_combinations=False, average_predictions=False, adaption_rate=1)
             gh.apply_gen_step()
             if gh.lines[idx] is None:
-                print("line was None.")
                 gh.lines[idx] = tmp
                 continue
 
-            print("pos_diff", gh.lines[idx].pos_diff(tmp))
             if gh.lines[idx].pos_diff(tmp) < 20:
                 tmp.immutable = True
 
@@ -1198,7 +1161,6 @@ def happyness_check(gh):
 
 def toast(message):
     if message:
-        print("toast", message)
         emit('toast', {'message': message})
 
 @socketio.on('extend pattern')
@@ -1209,7 +1171,7 @@ def extend_pattern(data):
     #später dropout?
     
     
-    print("LINES:", len(data["list"]))
+    print("extend pattern lines:", len(data["list"]))
     
     pt = PatternTrainer(data['name'])
     lineTrainer = LineTrainer(data['name'])

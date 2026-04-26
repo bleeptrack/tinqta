@@ -35,7 +35,6 @@ export class PatternTools extends HTMLElement {
 		}
 		
 		this.socket.on("init", (config) => {
-			console.log("config received", config)
 			this.canvas.setConfig(config)
 			
 		})
@@ -116,25 +115,22 @@ export class PatternTools extends HTMLElement {
 				}
 			}
 			this.socket.emit("erase:lines", indices)
-			console.log("erase lines", indices)
 			this.activeLine.remove()
 			this.activeLine = null
 		}
 		
 		
 		this.socket.on("init", (config) => {
-			console.log("config received", config)
 			this.canvas.setConfig(config)
 			
 		})
 
 		this.socket.on('toast', (data) => {
-			console.log(`MESSAGE: ${data.message}`)
+			console.info(`MESSAGE: ${data.message}`)
 			
 		})
 
 		this.socket.on('set:info', (data) => {
-			console.log("set:info received", data)
 			if (typeof data?.model === "string" && data.model.length > 0) {
 				this.activeModelName = data.model
 				const modelInputs = this.shadow.querySelectorAll('input[name="pattern-model"]')
@@ -151,7 +147,6 @@ export class PatternTools extends HTMLElement {
 		this.socket.on('draw:lines', (data) => {
 			this.canvas.clear()
 			this.canvas.linelist = []
-			console.log("draw:lines received", data)
 			for(let line of data.lines){
 
 				let l = this.canvas.drawLine(line, "black")
@@ -181,7 +176,6 @@ export class PatternTools extends HTMLElement {
 				l.addChild(mark)
 				*/
 
-				console.log("lines", this.canvas.linelist)
 			}
 		})
 
@@ -279,6 +273,9 @@ export class PatternTools extends HTMLElement {
 					width: 100%;
 					box-sizing: border-box;
 					padding-inline: 0.15rem 0.55rem;
+					display: flex;
+					flex-direction: column;
+					gap: 0.75rem;
 				}
 				#sidebar-footer #save-svg {
 					width: 100%;
@@ -431,18 +428,7 @@ export class PatternTools extends HTMLElement {
 					pointer-events: none;
 					cursor: not-allowed;
 				}
-				.tools-extra {
-					display: flex;
-					flex-direction: column;
-					gap: 0.5rem;
-					margin-top: 0.25rem;
-					padding-top: 0.75rem;
-					border-top: 1px solid rgba(0, 0, 0, 0.12);
-					font-family: ui-sans-serif, system-ui, sans-serif;
-					font-size: 0.85rem;
-					color: #333;
-				}
-				.tools-extra label.correction-check.scribble {
+				#tools-container label.correction-check.scribble {
 					display: flex;
 					align-items: center;
 					justify-content: center;
@@ -455,17 +441,17 @@ export class PatternTools extends HTMLElement {
 					line-height: 1.2;
 					background-color: #fff;
 				}
-				.tools-extra label.correction-check.scribble.is-disabled {
+				#tools-container label.correction-check.scribble.is-disabled {
 					opacity: 0.5;
 					cursor: not-allowed;
 				}
-				.tools-extra label.correction-check.scribble::after {
+				#tools-container label.correction-check.scribble::after {
 					width: calc(100% - 6px);
 					height: calc(100% - 6px);
 					left: 3px;
 					bottom: 3px;
 				}
-				.tools-extra label.correction-check input {
+				#tools-container label.correction-check input {
 					appearance: none;
 					-webkit-appearance: none;
 					width: 1rem;
@@ -478,7 +464,7 @@ export class PatternTools extends HTMLElement {
 					display: grid;
 					place-content: center;
 				}
-				.tools-extra label.correction-check input::before {
+				#tools-container label.correction-check input::before {
 					content: "";
 					width: 0.55rem;
 					height: 0.55rem;
@@ -487,17 +473,17 @@ export class PatternTools extends HTMLElement {
 					background: #000;
 					clip-path: polygon(14% 44%, 0 65%, 45% 100%, 100% 16%, 80% 0, 43% 62%);
 				}
-				.tools-extra label.correction-check input:checked::before {
+				#tools-container label.correction-check input:checked::before {
 					transform: scale(1);
 				}
-				.tools-extra label.correction-check input:checked {
+				#tools-container label.correction-check input:checked {
 					background: var(--main-color);
 					border-color: var(--main-color);
 				}
-				.tools-extra label.correction-check input:checked::before {
+				#tools-container label.correction-check input:checked::before {
 					background: #fff;
 				}
-				.tools-extra label.correction-check input:focus-visible {
+				#tools-container label.correction-check input:focus-visible {
 					outline: 2px solid #000;
 					outline-offset: 2px;
 				}
@@ -567,25 +553,15 @@ export class PatternTools extends HTMLElement {
 						<div id="tools-container">
 							<div class="tool-radios" role="radiogroup" aria-labelledby="tools-heading">
 								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="stamp"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">ads_click</span><span class="toggle-row-label">stamp</span></span></label>
+								<label id="correction-controls" class="correction-check scribble">
+									<input type="checkbox" id="correction-toggle" name="correction-toggle">
+									<span>Correction</span>
+								</label>
 								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="visual"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">shape_line</span><span class="toggle-row-label">adapt</span></span></label>
 								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="draw" checked><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">draw</span><span class="toggle-row-label">draw</span></span></label>
 								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="erase"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">ink_eraser</span><span class="toggle-row-label">erase</span></span></label>
 								
 								
-							</div>
-							<div class="tools-extra">
-								<label id="correction-controls" class="correction-check scribble">
-									<input type="checkbox" id="correction-toggle" name="correction-toggle">
-									<span>Correction</span>
-								</label>
-								<div class="noise-row">
-									<span class="noise-label">Noise (lines)</span>
-									<div class="noise-controls">
-										<input type="range" id="line-noise-slider" min="0" max="0.05" step="0.001" value="0.01">
-										<span class="noise-value" id="line-noise-value" aria-live="polite">0.01</span>
-										<button type="button" class="apply-noise scribble" id="line-noise-apply">Apply</button>
-									</div>
-								</div>
 							</div>
 						</div>
 					</section>
@@ -599,6 +575,14 @@ export class PatternTools extends HTMLElement {
 					</section>
 					</div>
 					<div id="sidebar-footer">
+						<div class="noise-row">
+							<span class="noise-label">Noise (lines)</span>
+							<div class="noise-controls">
+								<input type="range" id="line-noise-slider" min="0" max="0.05" step="0.001" value="0.01">
+								<span class="noise-value" id="line-noise-value" aria-live="polite">0.01</span>
+								<button type="button" class="apply-noise scribble" id="line-noise-apply">Apply</button>
+							</div>
+						</div>
 						<button type="button" class="scribble" id="save-svg" aria-label="Save drawing as SVG"><span class="material-symbols-outlined">save</span>SUBMIT</button>
 					</div>
 				</aside>
@@ -628,8 +612,13 @@ export class PatternTools extends HTMLElement {
 		const setAdvancedControlsEnabled = (toolValue) => {
 			const enabledTools = new Set(["stamp", "visual", "stampCorrection", "visualCorrection"])
 			const isEnabled = enabledTools.has(toolValue)
-			correctionToggle.disabled = !isEnabled
-			correctionControls.classList.toggle("is-disabled", !isEnabled)
+			const correctionEnabled = toolValue === "stamp" || toolValue === "stampCorrection"
+			correctionToggle.disabled = !correctionEnabled
+			correctionControls.classList.toggle("is-disabled", !correctionEnabled)
+			if (!correctionEnabled && correctionToggle.checked) {
+				correctionToggle.checked = false
+				this.socket.emit("change:correction", { correction: false })
+			}
 			modelContainer.classList.toggle("is-disabled", !isEnabled)
 			this.shadow.querySelectorAll('input[name="pattern-model"]').forEach((input) => {
 				input.disabled = !isEnabled
@@ -653,7 +642,6 @@ export class PatternTools extends HTMLElement {
 			input.addEventListener("change", () => {
 				this.activeModelName = input.value
 				this.socket.emit("change:model", input.value)
-				console.log("model changed to", input.value)
 			})
 		})
 
@@ -678,7 +666,6 @@ export class PatternTools extends HTMLElement {
 		this.shadow.getElementById("line-noise-apply").addEventListener("click", () => {
 			const amount = parseFloat(noiseSlider.value)
 			this.socket.emit("apply:noise", { noise_level: amount })
-			console.log("apply line noise", amount)
 		})
 
 		this.shadow.getElementById("clear").addEventListener("click", () => {
@@ -700,7 +687,6 @@ export class PatternTools extends HTMLElement {
 	sendLine(line) {
 		let processedLine = this.canvas.processLine(line)
 		this.socket.emit("add:line", processedLine)
-		console.log("sent line", processedLine)
 	}
 
 	async saveSVG(){
@@ -719,7 +705,6 @@ export class PatternTools extends HTMLElement {
 				throw new Error(`Failed to save SVG (${response.status})`)
 			}
 			const result = await response.json()
-			console.log('SVG saved on server as', result.filename)
 			window.alert(`Saved successfully. Thanks :)`)
 			this.socket.emit('clear')
 		} catch (error) {
