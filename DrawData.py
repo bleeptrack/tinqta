@@ -457,12 +457,24 @@ class GraphHandler:
         if latent_name is None:
             latent_name = self.pattern_trainer.name
 
+        # Zero noise must not re-encode through the latent decoder; that round-trip
+        # still changes geometry even when noise tensor is all zeros.
+        try:
+            if noise_level is not None and float(noise_level) <= 0:
+                out = line.clone()
+                out.is_fixed = True
+                out.added_at_stage = getattr(line, "added_at_stage", None)
+                out.added_with_model = getattr(line, "added_with_model", None)
+                return out
+        except (TypeError, ValueError):
+            pass
+
         z = line.get_pattern_z(center_position=line.position, latent_name=latent_name, max_dist=max_dist) 
         noise = torch.randn_like(z) * noise_level
         #dampen noise for the first 4 elements pos, rot, scale
         if noise.shape[-1] >= 4:
             noise[..., :4] *= 0.25
-            noise[4:] *= 2
+            noise[..., 4:] *= 2
         noisy_z = z + noise
         noisy_line = self.decompose_node(noisy_z)
         noisy_line.update_position_from_reference(line.position, max_dist=max_dist)

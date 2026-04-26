@@ -246,6 +246,8 @@ class Line():
         cloned.is_fixed = self.is_fixed
         cloned.dropout = self.dropout
         cloned.adaption_rate = self.adaption_rate
+        cloned.added_at_stage = self.added_at_stage
+        cloned.added_with_model = self.added_with_model
         
         # Copy any additional attributes that might exist
         if hasattr(self, 'used_ids'):
