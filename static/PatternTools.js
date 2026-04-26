@@ -720,8 +720,11 @@ export class PatternTools extends HTMLElement {
 			}
 			const result = await response.json()
 			console.log('SVG saved on server as', result.filename)
+			window.alert(`Saved successfully. Thanks :)`)
+			this.socket.emit('clear')
 		} catch (error) {
 			console.error('Error saving SVG:', error)
+			window.alert('Failed to save drawing. Please try again.')
 		}
 	}
 	
