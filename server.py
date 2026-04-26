@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, has_request_context, make_response
 from flask_socketio import SocketIO, send, emit
 from DrawData import GraphHandler
 from Model import LineTrainer, PatternTrainer
@@ -13,6 +13,8 @@ import numpy as np
 from pathlib import Path
 import torch
 import time
+import threading
+import uuid
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -52,7 +54,6 @@ for file in os.listdir(data_path):
 
 
 
-gh = GraphHandler()
 init_pattern = True
 line_deposit = []
 
@@ -68,6 +69,14 @@ line_trainers = {
     "swirls": LineTrainer("swirls"),
 }
 correction = False
+USER_ID_SESSION_KEY = "tinqta_user_id"
+USER_ID_COOKIE_KEY = "tinqta_user_id"
+USER_STATE_TTL_SECONDS = 60 * 60 * 12
+USER_STATE_CLEANUP_INTERVAL_SECONDS = 60
+_user_graph_handlers = {}
+_user_graph_lock = threading.Lock()
+_last_cleanup_timestamp = 0.0
+_default_gh = GraphHandler()
 
 
 def get_or_create_trainers(name):
@@ -84,6 +93,87 @@ def get_or_create_trainers(name):
     return line_trainers[name], pattern_trainers[name]
 
 
+def _get_or_create_user_id():
+    if not has_request_context():
+        return "__global__"
+
+    user_id = request.cookies.get(USER_ID_COOKIE_KEY)
+    if user_id:
+        return user_id
+
+    user_id = session.get(USER_ID_SESSION_KEY)
+    if user_id:
+        return user_id
+
+    user_id = uuid.uuid4().hex
+    session[USER_ID_SESSION_KEY] = user_id
+    return user_id
+
+
+def _attach_user_cookie(response):
+    if not has_request_context():
+        return response
+
+    existing_user_id = request.cookies.get(USER_ID_COOKIE_KEY)
+    if existing_user_id:
+        return response
+
+    user_id = _get_or_create_user_id()
+    session[USER_ID_SESSION_KEY] = user_id
+    response.set_cookie(
+        USER_ID_COOKIE_KEY,
+        user_id,
+        max_age=60 * 60 * 24 * 30,
+        samesite="Lax",
+    )
+    return response
+
+
+def _cleanup_stale_user_handlers(now):
+    global _last_cleanup_timestamp
+    if now - _last_cleanup_timestamp < USER_STATE_CLEANUP_INTERVAL_SECONDS:
+        return
+    _last_cleanup_timestamp = now
+    stale_user_ids = [
+        user_id
+        for user_id, state in _user_graph_handlers.items()
+        if now - state["last_seen"] > USER_STATE_TTL_SECONDS
+    ]
+    for user_id in stale_user_ids:
+        del _user_graph_handlers[user_id]
+
+
+def get_user_gh():
+    if not has_request_context():
+        return _default_gh
+
+    user_id = _get_or_create_user_id()
+    now = time.time()
+    with _user_graph_lock:
+        _cleanup_stale_user_handlers(now)
+        state = _user_graph_handlers.get(user_id)
+        if state is None:
+            state = {"gh": GraphHandler(), "last_seen": now}
+            _user_graph_handlers[user_id] = state
+        else:
+            state["last_seen"] = now
+        return state["gh"]
+
+
+class UserGraphProxy:
+    def __getattr__(self, name):
+        return getattr(get_user_gh(), name)
+
+    def __setattr__(self, name, value):
+        setattr(get_user_gh(), name, value)
+
+    def __delattr__(self, name):
+        delattr(get_user_gh(), name)
+
+
+gh = UserGraphProxy()
+
+
 #path = osp.join(osp.dirname(osp.realpath(__file__)), 'data', 'dataset-test')
 #dataset = MyOwnDataset("testdata", path)
 
@@ -94,7 +184,8 @@ def get_or_create_trainers(name):
 
 @socketio.event
 def connect():
-    print("User connected")
+    user_id = _get_or_create_user_id()
+    print(f"User connected: {user_id}")
     emit('init', config)
     emit('correctionChanged', {'correction': correction})
     mlist = getModels()
@@ -110,7 +201,8 @@ def connect():
 
 @socketio.event
 def disconnect():
-    print("User disconnected")
+    user_id = _get_or_create_user_id()
+    print(f"User disconnected: {user_id}")
 
 @socketio.on_error_default
 def default_error_handler(e):
@@ -1173,23 +1265,28 @@ def extend_pattern(data):
 
 @app.route("/")
 def start():
-    return render_template('webcam.html')
+    response = make_response(render_template('webcam.html'))
+    return _attach_user_cookie(response)
 
 @app.route("/latent-inspector")
 def website_latent_inspector():
-    return render_template('latent-inspector.html')
+    response = make_response(render_template('latent-inspector.html'))
+    return _attach_user_cookie(response)
 
 @app.route("/train")
 def website_train():
-    return render_template('train.html')
+    response = make_response(render_template('train.html'))
+    return _attach_user_cookie(response)
 
 @app.route("/draw")
 def website_draw():
-    return render_template('draw.html')
+    response = make_response(render_template('draw.html'))
+    return _attach_user_cookie(response)
 
 @app.route("/webcam")
 def website_webcam():
-    return render_template('webcam.html')
+    response = make_response(render_template('webcam.html'))
+    return _attach_user_cookie(response)
 
 @app.route("/save-svg", methods=["POST"])
 def save_svg():
