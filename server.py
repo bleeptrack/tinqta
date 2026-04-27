@@ -303,7 +303,8 @@ def add_stamp(data):
     if len(gh.lines) == 0:
         
         #gh.calculate_original_lines()
-        line =gh.original_lines[random.randint(0, len(gh.original_lines) - 1)]
+        #line =gh.original_lines[random.randint(0, len(gh.original_lines) - 1)]
+        line = gh.original_lines[0]
         line.position = position
     else:
         gh.add_missing_latent_vectors()
