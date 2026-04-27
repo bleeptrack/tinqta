@@ -470,6 +470,7 @@ class GraphHandler:
             pass
 
         z = line.get_pattern_z(center_position=line.position, latent_name=latent_name, max_dist=max_dist) 
+        print("z", z)
         noise = torch.randn_like(z) * noise_level
         #dampen noise for the first 4 elements pos, rot, scale
         if noise.shape[-1] >= 4:
