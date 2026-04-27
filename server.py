@@ -68,6 +68,10 @@ line_trainers = {
     "boxes": LineTrainer("boxes"),
     "swirls": LineTrainer("swirls"),
 }
+# Frozen template originals per line model name (clone list). Filled on first use; avoids
+# re-encoding the full line dataset on every change:model. DrawData.calculate_original_lines
+# is unchanged for other call sites (e.g. save_pattern_training_data).
+original_lines_by_model = {}
 correction = False
 USER_ID_SESSION_KEY = "tinqta_user_id"
 USER_ID_COOKIE_KEY = "tinqta_user_id"
@@ -93,13 +97,42 @@ def get_or_create_trainers(name):
     return line_trainers[name], pattern_trainers[name]
 
 
+def _ensure_original_lines_server_cache(line_trainer):
+    """Populate ``original_lines_by_model`` once per model name (template Line clones)."""
+    name = line_trainer.name
+    if name in original_lines_by_model:
+        return
+    built = []
+    for o in line_trainer.dataset.original_data:
+        l = Line(o.x, o.scale, o.rotation, o.position)
+        x, edge_index = l.create_line_graph()
+        z = line_trainer.encodeLineVector(x, edge_index)
+        l.add_latent_vector(z, line_trainer.name)
+        built.append(l.clone())
+    original_lines_by_model[name] = built
+    print("server: cached original lines for", name, len(built))
+
+
+def assign_gh_original_lines_from_server_cache(gh, line_trainer):
+    _ensure_original_lines_server_cache(line_trainer)
+    gh.original_lines = [ln.clone() for ln in original_lines_by_model[line_trainer.name]]
+
+
+def clear_original_lines_server_cache(model_name=None):
+    """Drop cached templates after replacing a line checkpoint in-process (optional)."""
+    if model_name is None:
+        original_lines_by_model.clear()
+    else:
+        original_lines_by_model.pop(model_name, None)
+
+
 def ensure_graph_initialized(model_name="swirls"):
     if gh.line_trainer is not None and gh.pattern_trainer is not None and len(gh.original_lines) > 0:
         return
 
     line_trainer, pattern_trainer = get_or_create_trainers(model_name)
     gh.set_default_trainers(pattern_trainer=pattern_trainer, line_trainer=line_trainer)
-    gh.calculate_original_lines()
+    assign_gh_original_lines_from_server_cache(gh, line_trainer)
 
 
 def _get_or_create_user_id():
@@ -283,9 +316,8 @@ def change_model(data):
     name = data
     lineTrainer = line_trainers[name]
     patternTrainer = pattern_trainers[name]
-    gh.original_lines = []
     gh.set_default_trainers(pattern_trainer=patternTrainer, line_trainer=lineTrainer)
-    gh.calculate_original_lines()
+    assign_gh_original_lines_from_server_cache(gh, lineTrainer)
     emit('modelChanged', {'name': name})
 
 @socketio.on('change:correction')
