@@ -126,6 +126,18 @@ def clear_original_lines_server_cache(model_name=None):
         original_lines_by_model.pop(model_name, None)
 
 
+def warm_original_lines_server_cache(model_names=("triangles", "boxes", "swirls")):
+    """Encode dataset originals once at process start so model switches are instant."""
+    for name in model_names:
+        if name not in line_trainers:
+            continue
+        _ensure_original_lines_server_cache(line_trainers[name])
+    print("server: pre-warmed original lines cache for", list(model_names))
+
+
+warm_original_lines_server_cache()
+
+
 def ensure_graph_initialized(model_name="swirls"):
     if gh.line_trainer is not None and gh.pattern_trainer is not None and len(gh.original_lines) > 0:
         return
