@@ -554,30 +554,41 @@ class LineTrainer():
 
     def reparameterize(self, mu, logvar):
         """
-        Reparameterization trick to sample from N(mu, var) from
-        N(0,1).
+        Reparameterization trick: sample z ~ N(mu, sigma^2) during training.
+
+        When ``self.model`` is in eval mode (``self.model.training`` is False),
+        returns ``mu`` only so encodings and distances are deterministic—same
+        stroke graph maps to the same latent across runs and machines.
+
         :param mu: (Tensor) Mean of the latent Gaussian [B x D]
-        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
-        :return: (Tensor) [B x D]
+        :param logvar: (Tensor) log-variance of the latent Gaussian [B x D]
+        :return: (Tensor) [B x D] or [D] if batch was 1 (after squeeze)
         """
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        z = eps * std + mu
+        if self.model.training:
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            z = eps * std + mu
+        else:
+            z = mu
         if z.size(0) == 1:
             z = z.squeeze(0)
-        #print("reparameterize", z.size(), z)
         return z
 
     def extractOriginLineVectors(self):
+        was_training = self.model.training
         self.model.eval()
-        vectors = []
-        originpoints = []
-        for data in self.dataset.original_data:
-            mu, logvar = self.model.encode(data.x, data.edge_index)
-            z = self.reparameterize(mu, logvar)
-            vectors.append(z)
-            originpoints.append(data.x)
-        return vectors, originpoints
+        try:
+            vectors = []
+            originpoints = []
+            for data in self.dataset.original_data:
+                mu, logvar = self.model.encode(data.x, data.edge_index)
+                z = self.reparameterize(mu, logvar)
+                vectors.append(z)
+                originpoints.append(data.x)
+            return vectors, originpoints
+        finally:
+            if was_training:
+                self.model.train()
 
     def encodeLineVector(self, x, edge_index):
         self.model.eval()

@@ -475,6 +475,7 @@ class GraphHandler:
         if noise.shape[-1] >= 4:
             noise[..., :4] *= 0.25
             noise[..., 4:] *= 2
+        print("noise", noise)
         noisy_z = z + noise
         noisy_line = self.decompose_node(noisy_z)
         noisy_line.update_position_from_reference(line.position, max_dist=max_dist)
