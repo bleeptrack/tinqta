@@ -11,10 +11,14 @@ export class PatternTools extends HTMLElement {
 		this.shadow = this.attachShadow({ mode: 'open' });
 		this.canvas = new PaperCanvasDraw()
 		this.activeModelName = 'triangles'
+		this.isApplyingNoise = false
+		this.isSwitchingModel = false
+		this.pendingToolValue = null
 		this.basicTool = new paper.Tool()
 		this.activeLine = null
 
 		this.basicTool.onMouseDown = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine = new paper.Path()
 			this.activeLine.strokeColor = "darkgray"
 			this.activeLine.strokeWidth = 3
@@ -22,9 +26,11 @@ export class PatternTools extends HTMLElement {
 			this.activeLine.add(event.point)
 		}
 		this.basicTool.onMouseDrag = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine.add(event.point)
 		}
 		this.basicTool.onMouseUp = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine.simplify()
 			if(this.activeLine.segments.length > 1){
 				this.sendLine(this.activeLine)
@@ -41,10 +47,12 @@ export class PatternTools extends HTMLElement {
 
 		this.stampTool = new paper.Tool()
 		this.stampTool.onMouseDown = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine = new paper.Path.Circle(event.point, 10)
 			this.activeLine.fillColor = "green"
 		}
 		this.stampTool.onMouseUp = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine.remove()
 			this.socket.emit("add:stamp", {"position": {"x": event.point.x, "y": event.point.y}})
 		}
@@ -58,6 +66,7 @@ export class PatternTools extends HTMLElement {
 
 		this.visualTool = new paper.Tool()
 		this.visualTool.onMouseDown = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine = new paper.Path()
 			this.activeLine.strokeColor = "blue"
 			this.activeLine.strokeWidth = 3
@@ -65,9 +74,11 @@ export class PatternTools extends HTMLElement {
 			this.activeLine.add(event.point)
 		}
 		this.visualTool.onMouseDrag = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine.add(event.point)
 		}
 		this.visualTool.onMouseUp = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine.simplify()
 			let processedLine = this.canvas.processLine(this.activeLine)
 			this.socket.emit("add:visual", {"position": {"x": this.activeLine.firstSegment.point.x, "y": this.activeLine.firstSegment.point.y},"line": processedLine, "name": this.activeModelName, "correction": false})
@@ -96,6 +107,7 @@ export class PatternTools extends HTMLElement {
 
 		this.eraseTool = new paper.Tool()
 		this.eraseTool.onMouseDown = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine = new paper.Path()
 			this.activeLine.strokeColor = "red"
 			this.activeLine.strokeWidth = 3
@@ -103,9 +115,11 @@ export class PatternTools extends HTMLElement {
 			this.activeLine.add(event.point)
 		}
 		this.eraseTool.onMouseDrag = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			this.activeLine.add(event.point)
 		}
 		this.eraseTool.onMouseUp = (event) => {
+			if (this.isSwitchingModel || this.isApplyingNoise) return
 			let indices = []
 			for(let [index, line] of this.canvas.linelist.entries()){
 				if(line.intersects(this.activeLine)){
@@ -607,6 +621,26 @@ export class PatternTools extends HTMLElement {
 			if (t) t.activate()
 		}
 		const modelContainer = this.shadow.getElementById("model-container")
+		const toolInputs = () => this.shadow.querySelectorAll('input[name="pattern-tool"]')
+		const modelInputs = () => this.shadow.querySelectorAll('input[name="pattern-model"]')
+		const setModelSwitchBusy = (isBusy) => {
+			this.isSwitchingModel = isBusy
+			if (isBusy && this.activeLine) {
+				try {
+					this.activeLine.remove()
+				} catch (e) {
+					// ignore cleanup failures; Paper.js state can vary mid-gesture
+				}
+				this.activeLine = null
+			}
+			toolInputs().forEach((input) => {
+				input.disabled = isBusy
+			})
+			modelInputs().forEach((input) => {
+				input.disabled = isBusy
+			})
+			modelContainer.classList.toggle("is-disabled", isBusy)
+		}
 		const correctionControls = this.shadow.getElementById("correction-controls")
 		const correctionToggle = this.shadow.getElementById("correction-toggle")
 		const setAdvancedControlsEnabled = (toolValue) => {
@@ -624,9 +658,13 @@ export class PatternTools extends HTMLElement {
 				input.disabled = !isEnabled
 			})
 		}
-		this.shadow.querySelectorAll('input[name="pattern-tool"]').forEach((input) => {
+		toolInputs().forEach((input) => {
 			input.addEventListener("change", () => {
 				if (input.checked) {
+					if (this.isSwitchingModel) {
+						this.pendingToolValue = input.value
+						return
+					}
 					activateTool(input.value)
 					setAdvancedControlsEnabled(input.value)
 				}
@@ -638,10 +676,19 @@ export class PatternTools extends HTMLElement {
 			setAdvancedControlsEnabled(initialTool.value)
 		}
 
-		this.shadow.querySelectorAll('input[name="pattern-model"]').forEach((input) => {
+		modelInputs().forEach((input) => {
 			input.addEventListener("change", () => {
 				this.activeModelName = input.value
-				this.socket.emit("change:model", input.value)
+				setModelSwitchBusy(true)
+				this.socket.emit("change:model", { name: input.value }, () => {
+					setModelSwitchBusy(false)
+					const toolToActivate = this.pendingToolValue ?? this.shadow.querySelector('input[name="pattern-tool"]:checked')?.value
+					this.pendingToolValue = null
+					if (toolToActivate) {
+						activateTool(toolToActivate)
+						setAdvancedControlsEnabled(toolToActivate)
+					}
+				})
 			})
 		})
 
@@ -656,6 +703,12 @@ export class PatternTools extends HTMLElement {
 
 		const noiseSlider = this.shadow.getElementById("line-noise-slider")
 		const noiseValue = this.shadow.getElementById("line-noise-value")
+		const noiseApplyButton = this.shadow.getElementById("line-noise-apply")
+		const setNoiseApplyBusy = (isBusy) => {
+			this.isApplyingNoise = isBusy
+			noiseApplyButton.disabled = isBusy
+			noiseApplyButton.textContent = isBusy ? "Applying..." : "Apply"
+		}
 		const syncNoiseLabel = () => {
 			const v = Number(noiseSlider.value)
 			noiseValue.textContent = Number.isFinite(v) ? v.toFixed(3) : noiseSlider.value
@@ -663,9 +716,15 @@ export class PatternTools extends HTMLElement {
 		}
 		noiseSlider.addEventListener("input", syncNoiseLabel)
 		syncNoiseLabel()
-		this.shadow.getElementById("line-noise-apply").addEventListener("click", () => {
+		noiseApplyButton.addEventListener("click", () => {
+			if (this.isApplyingNoise) {
+				return
+			}
 			const amount = parseFloat(noiseSlider.value)
-			this.socket.emit("apply:noise", { noise_level: amount })
+			setNoiseApplyBusy(true)
+			this.socket.emit("apply:noise", { noise_level: amount }, () => {
+				setNoiseApplyBusy(false)
+			})
 		})
 
 		this.shadow.getElementById("clear").addEventListener("click", () => {

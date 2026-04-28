@@ -325,12 +325,12 @@ def apply_correction(line, position):
     
 @socketio.on('change:model')
 def change_model(data):
-    name = data
-    lineTrainer = line_trainers[name]
-    patternTrainer = pattern_trainers[name]
+    name = data.get('name') if isinstance(data, dict) else data
+    lineTrainer, patternTrainer = get_or_create_trainers(name)
     gh.set_default_trainers(pattern_trainer=patternTrainer, line_trainer=lineTrainer)
     assign_gh_original_lines_from_server_cache(gh, lineTrainer)
     emit('modelChanged', {'name': name})
+    return {'ok': True, 'name': name}
 
 @socketio.on('change:correction')
 def change_correction(data):
@@ -347,8 +347,8 @@ def add_stamp(data):
     if len(gh.lines) == 0:
         
         #gh.calculate_original_lines()
-        #line =gh.original_lines[random.randint(0, len(gh.original_lines) - 1)]
-        line = gh.original_lines[0]
+        line =gh.original_lines[random.randint(0, len(gh.original_lines) - 1)]
+        
         line.position = position
     else:
         gh.add_missing_latent_vectors()
