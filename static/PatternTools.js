@@ -277,7 +277,7 @@ export class PatternTools extends HTMLElement {
 					min-height: 0;
 					min-width: 0;
 					overflow-x: hidden;
-					overflow-y: auto;
+					overflow-y: hidden;
 					display: flex;
 					flex-direction: column;
 					gap: 1.25rem;
@@ -318,6 +318,17 @@ export class PatternTools extends HTMLElement {
 					flex-direction: column;
 					gap: 0.5rem;
 					min-width: 0;
+				}
+				section[aria-label="Models"] {
+					flex: 1 1 auto;
+					min-height: 0;
+					display: flex;
+					flex-direction: column;
+				}
+				section[aria-label="Models"] #model-container {
+					flex: 1 1 auto;
+					min-height: 0;
+					gap: 0.35rem;
 				}
 				#tools-container .tool-radios {
 					display: flex;
@@ -397,10 +408,12 @@ export class PatternTools extends HTMLElement {
 					left: 2px;
 				}
 				#model-container label.toggle-row.scribble {
+					flex: 1 1 0;
+					min-height: 2.65rem;
 					flex-direction: row;
 					align-items: center;
 					justify-content: flex-start;
-					padding: 0.35rem 0.45rem 0.35rem 1.15rem;
+					padding: clamp(0.2rem, 0.65vh, 0.35rem) 0.45rem clamp(0.2rem, 0.65vh, 0.35rem) 1.05rem;
 					gap: 0;
 					width: 100%;
 				}
@@ -413,18 +426,20 @@ export class PatternTools extends HTMLElement {
 					flex: 1;
 					min-width: 0;
 					width: 100%;
+					height: 100%;
 				}
 				#model-container .model-preview {
 					display: block;
-					flex: 0 0 58%;
-					width: 58%;
-					max-width: 58%;
-					height: 8.5rem;
+					flex: 0 0 50%;
+					width: 50%;
+					max-width: 50%;
+					height: 100%;
+					max-height: 100%;
 					object-fit: contain;
 					object-position: left center;
 					pointer-events: none;
 					min-width: 0;
-					margin-left: 0.65rem;
+					margin-left: 0.45rem;
 					margin-right: 0.2rem;
 					box-sizing: border-box;
 				}
