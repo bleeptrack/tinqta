@@ -252,9 +252,12 @@ def connect():
         emit("set:info", {"model": gh.line_trainer.name, "correction": correction})
 
 @socketio.event
-def disconnect():
+def disconnect(reason=None):
     user_id = _get_or_create_user_id()
-    print(f"User disconnected: {user_id}")
+    if reason is not None:
+        print(f"User disconnected: {user_id} ({reason})")
+    else:
+        print(f"User disconnected: {user_id}")
 
 @socketio.on_error_default
 def default_error_handler(e):
