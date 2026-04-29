@@ -296,7 +296,10 @@ def add_visual(data):
     new_line.scale = line.scale
 
     if correction:
-        new_line = apply_correction(new_line, position)
+        print("applying correction")
+        injected_pos = position
+        injected_line_latent = line.latent_vectors[gh.line_trainer.name]
+        new_line = apply_correction(new_line, position, injected_pos=injected_pos, injected_line_latent=injected_line_latent)
         
         #new_line.scale = new_line.scale + scale_offset
         #new_line.rotation = new_line.rotation + rotation_offset
@@ -315,8 +318,8 @@ def add_visual(data):
     else:
         print("add:visual produced no prediction")
 
-def apply_correction(line, position):
-    prediction = gh.predict_to_draw(position)
+def apply_correction(line, position, injected_pos=None, injected_line_latent=None):
+    prediction = gh.predict_to_draw(position, injected_pos=injected_pos, injected_line_latent=injected_line_latent)
     if prediction is not None:
         line.position = prediction.position
         line.rotation = prediction.rotation
@@ -958,7 +961,7 @@ def generate_pattern(data):
                 
                 line_idx = gh.lines.index(line)
                 time_sleep = 0.1
-                relax_value = 0.25
+                relax_value = 0 #0.25
 
                 
                 
@@ -997,21 +1000,21 @@ def generate_pattern(data):
                             line.is_fixed = True
                             
 
-                        # clusters_list = predictions  # predictions contains clusters list from evaluate_ensemble
-                        # predictions = []
-                        # for cluster_number, cluster_lines in enumerate(clusters_list):
-                        #     # Ensure cluster_lines is a list, not a single Line object
-                        #     if not isinstance(cluster_lines, list):
-                        #         cluster_lines = [cluster_lines]
-                        #     for line in cluster_lines:
-                        #         line.cluster_number = int(cluster_number)
-                        #         predictions.append(line)
-                        # if average_line is not None:         
-                        #     predictions.append(average_line) 
-                        #info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
-                        #info["ghost_lines"] = [line.to_JSON() for line in predictions]
-                        #info["average_line"] = [b.to_JSON() for b in try_later]
-                        #emit('prediction', info)
+                        clusters_list = predictions  # predictions contains clusters list from evaluate_ensemble
+                        predictions = []
+                        for cluster_number, cluster_lines in enumerate(clusters_list):
+                            # Ensure cluster_lines is a list, not a single Line object
+                            if not isinstance(cluster_lines, list):
+                                cluster_lines = [cluster_lines]
+                            for line in cluster_lines:
+                                line.cluster_number = int(cluster_number)
+                                predictions.append(line)
+                        if average_line is not None:         
+                            predictions.append(average_line) 
+                        info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
+                        info["ghost_lines"] = [line.to_JSON() for line in predictions]
+                        info["average_line"] = [b.to_JSON() for b in try_later]
+                        emit('prediction', info)
                         #time.sleep(1)
                         
 
@@ -1152,14 +1155,14 @@ def generate_pattern(data):
                     
                     
                         
-                    #info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
+                    info["initial"] = [line.to_JSON() for line in gh.lines if line != None]
                     #info["ghost_lines"] = [line.to_JSON() for line in predictions_to_emit]
-                    #info["average_line"] = [p.to_JSON() for p in predictions]
+                    info["average_line"] = [p.to_JSON() for p in predictions]
                    
                     #info["comparison_line"] = [best_prediction.to_JSON()] if best_prediction is not None else []
                     #info["diffused_lines"] = [line.to_JSON() for idx, line in enumerate(gh.lines) if line is not None and idx in average_line.used_ids]
                     
-                    #emit('prediction', info)
+                    emit('prediction', info)
                     #print("prediction emitted")
                     #time.sleep(3)
 

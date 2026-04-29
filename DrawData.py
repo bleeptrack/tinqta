@@ -421,8 +421,8 @@ class GraphHandler:
         min_coverage = 0.5
         outsider_distance = sample_distance/3.5
 
-        max_x = 5
-        max_y = 8  #4,5
+        max_x = 3
+        max_y = 3  #4,5
         for i in range(max_x):
             for j in range(max_y):
                 print("i", i, "j", j)
@@ -822,11 +822,21 @@ class GraphHandler:
               
         return predictions
 
-    def predict_to_draw(self, position):
+    def predict_to_draw(self, position, injected_pos=None, injected_line_latent=None):
         self.add_missing_latent_vectors()
         data = self.sample_pattern_from_position(position, latent_name=self.pattern_trainer.name, max_dist=self.pattern_trainer.max_dist, inference=True)
         if data is not None:
-            z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point)
+
+            #making injections into tensors
+            if injected_pos is not None:
+                injected_pos = torch.tensor([(injected_pos['x'] - data.center_point['x']) / self.pattern_trainer.max_dist, (injected_pos['y'] - data.center_point['y']) / self.pattern_trainer.max_dist])
+                injected_pos = injected_pos.unsqueeze(0)
+                print("comparing target and injected pos", injected_pos, data.target_point)
+            if injected_line_latent is not None:
+                injected_line_latent = torch.tensor(injected_line_latent)
+                injected_line_latent = injected_line_latent.unsqueeze(0)
+                
+            z = self.pattern_trainer.predict(data.x, data.edge_index, data.target_point, injected_pos=injected_pos, injected_line_latent=injected_line_latent)
             line = self.decompose_node(z)
             line.update_position_from_reference(data.center_point, max_dist=self.pattern_trainer.max_dist)
             return line

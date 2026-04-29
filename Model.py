@@ -296,7 +296,7 @@ class PatternEncoder(torch.nn.Module):
         
         return torch.stack(flattened_features), new_batch_vector
 
-    def forward(self, x, edge_index, batch_vector=None, target_pos=None, epoch=None):
+    def forward(self, x, edge_index, batch_vector=None, target_pos=None, epoch=None, injected_pos=None, injected_line_latent=None):
 
 
         x_face, _ = self.arrange_face(x, batch_vector, target_pos)
@@ -358,10 +358,20 @@ class PatternEncoder(torch.nn.Module):
         x_face_updated, _ = self.arrange_face(initial_x, batch_vector, pos)
         combined_readout = torch.cat([x_face_updated, initial_readout], dim=-1)
 
+        if injected_pos is not None:
+            print("injected pos", injected_pos, "vs", pos)
+            pos = injected_pos
+        
 
         vec = self.vec_hidden1(torch.cat([pos, combined_readout], dim=-1)).relu()
         vec = self.vec_hidden2(vec).relu()
         vec = self.vec(vec)
+
+        if injected_line_latent is not None:
+            print("injected line latent", injected_line_latent, "vs", vec)
+
+            vec = injected_line_latent
+        
 
         scale = self.scale_hidden1(torch.cat([pos, vec, combined_readout], dim=-1)).relu()
         scale = self.scale_hidden2(scale).relu()
@@ -1031,9 +1041,9 @@ class PatternTrainer():
         
         return z, data
 
-    def predict(self, x, edge_index, pos):
+    def predict(self, x, edge_index, pos, injected_pos=None, injected_line_latent=None):
         self.model.eval()
-        return self.model.forward(x, edge_index, batch_vector=None, target_pos=pos)
+        return self.model.forward(x, edge_index, batch_vector=None, target_pos=pos, injected_pos=injected_pos, injected_line_latent=injected_line_latent)
 
     def predict_from_sample(self, sample):
         self.model.eval()

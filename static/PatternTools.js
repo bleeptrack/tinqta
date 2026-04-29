@@ -79,6 +79,7 @@ export class PatternTools extends HTMLElement {
 		}
 		this.visualTool.onMouseUp = (event) => {
 			if (this.isSwitchingModel || this.isApplyingNoise) return
+			if (this.activeLine.segments.length <= 1) return
 			this.activeLine.simplify()
 			let processedLine = this.canvas.processLine(this.activeLine)
 			this.socket.emit("add:visual", {"position": {"x": this.activeLine.firstSegment.point.x, "y": this.activeLine.firstSegment.point.y},"line": processedLine, "name": this.activeModelName, "correction": false})
@@ -447,6 +448,7 @@ export class PatternTools extends HTMLElement {
 					align-items: center;
 					justify-content: center;
 					gap: 0.5rem;
+					margin-top: 0.35rem;
 					cursor: pointer;
 					user-select: none;
 					width: auto;
@@ -567,13 +569,13 @@ export class PatternTools extends HTMLElement {
 						<div id="tools-container">
 							<div class="tool-radios" role="radiogroup" aria-labelledby="tools-heading">
 								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="stamp"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">ads_click</span><span class="toggle-row-label">stamp</span></span></label>
+								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="visual"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">shape_line</span><span class="toggle-row-label">adapt</span></span></label>
+								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="draw" checked><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">draw</span><span class="toggle-row-label">draw</span></span></label>
+								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="erase"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">ink_eraser</span><span class="toggle-row-label">erase</span></span></label>
 								<label id="correction-controls" class="correction-check scribble">
 									<input type="checkbox" id="correction-toggle" name="correction-toggle">
 									<span>Correction</span>
 								</label>
-								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="visual"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">shape_line</span><span class="toggle-row-label">adapt</span></span></label>
-								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="draw" checked><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">draw</span><span class="toggle-row-label">draw</span></span></label>
-								<label class="scribble toggle-row"><input type="radio" name="pattern-tool" value="erase"><span class="toggle-row-content"><span class="toggle-row-icon" aria-hidden="true">ink_eraser</span><span class="toggle-row-label">erase</span></span></label>
 								
 								
 							</div>
@@ -646,13 +648,12 @@ export class PatternTools extends HTMLElement {
 		const setAdvancedControlsEnabled = (toolValue) => {
 			const enabledTools = new Set(["stamp", "visual", "stampCorrection", "visualCorrection"])
 			const isEnabled = enabledTools.has(toolValue)
-			const correctionEnabled = toolValue === "stamp" || toolValue === "stampCorrection"
+			const correctionEnabled = toolValue === "stamp"
+				|| toolValue === "stampCorrection"
+				|| toolValue === "visual"
+				|| toolValue === "visualCorrection"
 			correctionToggle.disabled = !correctionEnabled
 			correctionControls.classList.toggle("is-disabled", !correctionEnabled)
-			if (!correctionEnabled && correctionToggle.checked) {
-				correctionToggle.checked = false
-				this.socket.emit("change:correction", { correction: false })
-			}
 			modelContainer.classList.toggle("is-disabled", !isEnabled)
 			this.shadow.querySelectorAll('input[name="pattern-model"]').forEach((input) => {
 				input.disabled = !isEnabled
