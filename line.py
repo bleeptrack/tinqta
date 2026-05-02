@@ -43,21 +43,26 @@ class Line():
                 })
         return points
 
-    def are_similar(self, other, relaxation=0):
-        pos_diff = self.pos_diff(other) < 30 * (1 + relaxation)
-        latent_diff = self.latent_line_diff(other) < 1 * (1 + relaxation)
+    def are_similar(self, other, relaxation=0, max_dist=None, median_latent_dist=None):
+        print("median_latent_dist", median_latent_dist, "vs",(median_latent_dist * 0.33) * (1 + relaxation))
+        pos_diff = self.pos_diff(other) < max_dist/3 if max_dist is not None else 30 #* (1 + relaxation)
+        latent_diff = self.latent_line_diff(other) < (median_latent_dist * 0.5) * (1 + relaxation)
         rot_diff_tmp = abs(self.rotation - other.rotation)
         rotation_diff = min(rot_diff_tmp, 1 - rot_diff_tmp) < 0.1 * (1 + relaxation)
         scale_diff_tmp = abs(self.scale - other.scale)
         scale_diff = min(scale_diff_tmp, 1 - scale_diff_tmp) < 0.15 * (1 + relaxation)
+
+        #cos_similarity, distance_from_origin = self.cosine_and_distance_diff(other)
+        #cosine_test = cos_similarity < 0.15 and distance_from_origin < 0.55
 
         pos_diff_value = self.pos_diff(other)
         latent_diff_value = self.latent_line_diff(other)
         rotation_diff_value = min(rot_diff_tmp, 1 - rot_diff_tmp)
         scale_diff_value = min(scale_diff_tmp, 1 - scale_diff_tmp)
         print("_______________________")
-        print(f"{'✓' if pos_diff else '✗'} pos_diff", pos_diff_value)
-        print(f"{'✓' if latent_diff else '✗'} latent_diff", latent_diff_value)
+        print(f"{'✓' if pos_diff else '✗'} pos_diff ({max_dist/3})", pos_diff_value)
+        print(f"{'✓' if latent_diff else '✗'} latent_diff ({1 * (1 + relaxation)})", latent_diff_value)
+        #print(f"{'✓' if cosine_test else '✗'} cosine and distance diff", cos_similarity, distance_from_origin)
         #print(f"{'✓' if rotation_diff else '✗'} rotation_diff", rotation_diff_value)
         #print(f"{'✓' if scale_diff else '✗'} scale_diff", scale_diff_value, self.scale, other.scale)
         print("_______________________")
@@ -85,7 +90,18 @@ class Line():
                 raise ValueError("No latent name provided to fetch latent vector")
         z1 = self.latent_vectors[latent_name]
         z2 = other.latent_vectors[latent_name]
+
         return torch.dist(z1, z2, p=2)
+
+    def cosine_and_distance_diff(self, other, latent_name=None):
+        if latent_name is None:
+            if len(self.latent_vectors.keys()) == 1:
+                latent_name = list(self.latent_vectors.keys())[0]
+            else:
+                raise ValueError("No latent name provided to fetch latent vector")
+        z1 = self.latent_vectors[latent_name]
+        z2 = other.latent_vectors[latent_name]
+        return 1-torch.cosine_similarity(z1, z2, dim=0), torch.abs(torch.norm(z1, p=2) - torch.norm(z2, p=2))
 
     def pattern_latent_diff(self, other, latent_name=None, max_dist=None):
         if latent_name is None:

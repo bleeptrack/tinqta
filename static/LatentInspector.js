@@ -196,6 +196,7 @@ export class LatentInspector extends HTMLElement {
 							<option value="top">Top</option>
 						</select>
 						<button id="applyCameraPreset" type="button">Apply</button>
+						<button id="startViewBtn" type="button" title="View from latent-space center">Start</button>
 					</div>
 				</div>
 				<div class="control-group">
@@ -597,6 +598,12 @@ export class LatentInspector extends HTMLElement {
 				this.applyCameraPreset(presetSelect.value);
 			});
 		}
+		const startViewBtn = this.shadow.getElementById("startViewBtn");
+		if (startViewBtn) {
+			startViewBtn.addEventListener("click", () => {
+				this.applyCenterLookoutView();
+			});
+		}
 
 		const exportPngButton = this.shadow.getElementById("exportPng");
 		if (exportPngButton) {
@@ -640,6 +647,18 @@ export class LatentInspector extends HTMLElement {
 		const preset = this.cameraPresets[presetName];
 		if (!preset) return;
 		this.setCameraAngles(preset);
+	}
+
+	applyCenterLookoutView() {
+		if (!this._camera) return;
+		this._isoViewLocked = false;
+		this.setAutoRotateEnabled(false);
+		this.updateIsoViewButtonStyles(-1);
+		// ArcRotateCamera cannot stably sit exactly at its target.
+		// Keep a tiny offset while targeting origin so "Start" is centered.
+		const epsilon = 0.001;
+		this._camera.setTarget(Vector3.Zero());
+		this._camera.setPosition(new Vector3(0, 0, -epsilon));
 	}
 
 	setAutoRotateEnabled(enabled) {

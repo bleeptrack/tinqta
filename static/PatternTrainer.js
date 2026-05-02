@@ -103,7 +103,7 @@ export class PatternTrainer extends HTMLElement {
 				}
 				let l = this.canvas.drawLine(line, color, paper.project.layers["lines"])
 				l.strokeWidth = 7
-				l.opacity = 0.2
+				l.opacity = 0.8
 				l.strokeCap = "round"
 				baseLines.push(l)
 			}
